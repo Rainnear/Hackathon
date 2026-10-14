@@ -32,12 +32,32 @@ export interface Focal {
   phone: string
 }
 
+export const DEPARTURE_REASONS = [
+  { value: 'resigned', label: 'Resigned' },
+  { value: 'removed', label: 'Removed' },
+  { value: 'deceased', label: 'Passed away' },
+  { value: 'moved', label: 'Moved away' },
+  { value: 'other', label: 'Other reason' },
+] as const
+export type DepartureReason = (typeof DEPARTURE_REASONS)[number]['value']
+
+/** A tanod from last year who is not in this year's list, and why. */
+export interface Departure {
+  tanodId: string
+  /** Their name as it was, since they are no longer in the list. */
+  name: string
+  reason: DepartureReason
+  note: string
+}
+
 export interface Barangay {
   name: string
   limit: number
   tanods: Tanod[]
   docs: BarangayDocs
   focal: Focal
+  /** Last year's tanods who did not continue this year. */
+  left: Departure[]
 }
 
 export interface Signatories {

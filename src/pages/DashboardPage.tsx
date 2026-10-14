@@ -4,11 +4,15 @@ import { Icon } from '../components/icons'
 import { Box, Chip } from '../components/ui'
 import { FILTERS, matchesFilter, type Analysis } from '../domain/analyze'
 import { peso, plural } from '../domain/format'
-import type { Filter, Issue, Tone } from '../domain/types'
+import type { Barangay, Filter, Issue, Tone } from '../domain/types'
 import { useAuth } from '../state/auth'
 import { href, navigate, type Route } from '../state/route'
 import { useStore } from '../state/store'
 import { ProvinceView } from './ProvinceView'
+import { OtherBarangays } from '../components/OtherBarangays'
+import { ScansWaiting } from '../components/ScanReview'
+import { useEditable } from '../state/access'
+import { toast } from '../state/toast'
 
 const TONES: { tone: Tone; label: string; filter: Filter }[] = [
   { tone: 'ok', label: 'Ready', filter: 'ready' },
@@ -164,8 +168,10 @@ function issueLink(i: Issue): Route {
 }
 
 function Attention({ A }: { A: Analysis }) {
+  const isSecretary = useAuth((s) => s.profile?.role === 'secretary')
   const list = [...A.issues].sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1))
-  const shown = list.slice(0, 5)
+  // A secretary sees every item for their barangay; the full list is the Tanod Rep's Review page.
+  const shown = isSecretary ? list : list.slice(0, 5)
   return (
     <Box title="Needs your attention" aside={list.length > 0 && <Chip tone={A.errs ? 'bad' : 'warn'}>{plural(list.length, 'item')}</Chip>} className="dash-card">
       {shown.length ? (
@@ -182,14 +188,14 @@ function Attention({ A }: { A: Analysis }) {
               </li>
             ))}
           </ul>
-          {list.length > shown.length && (
+          {list.length > shown.length && !isSecretary && (
             <div className="box-ft">
               <a className="linkbtn" href={href({ page: 'review' })}>See all {list.length} in Review</a>
             </div>
           )}
         </>
       ) : (
-        <p className="empty big">Nothing needs fixing. The set is ready to print.</p>
+        <p className="empty big">{isSecretary ? 'Nothing to fix right now.' : 'Nothing needs fixing. The set is ready to print.'}</p>
       )}
     </Box>
   )
@@ -277,6 +283,96 @@ function BarangayBoard({ A }: { A: Analysis }) {
   )
 }
 
+/** What a barangay still needs, as a plain checklist. */
+function Checklist({ b }: { b: Barangay }) {
+  const n = b.tanods.length
+  const signed = b.tanods.filter((t) => t.ids >= 3).length
+  const items: { ok: boolean; label: string; hint: string; link?: { to: Route; text: string } }[] = [
+    { ok: n > 0 && n <= b.limit, label: 'Tanods listed', hint: n > b.limit ? `${n - b.limit} over the limit of ${b.limit}. Remove some.` : n ? `${n} of up to ${b.limit}` : `None yet. Up to ${b.limit} allowed.` },
+    { ok: n > 0 && signed === n, label: 'ID photocopies with 3 signatures', hint: n ? `${signed} of ${n} complete` : 'Add tanods first' },
+    { ok: b.docs.cert, label: 'Barangay Certification', hint: b.docs.cert ? 'Received' : 'Signed by the Punong Barangay', link: { to: { page: 'certificate', brgy: b.name } as Route, text: 'Print the form, filled in' } },
+    { ok: b.docs.designation, label: 'Proof of designation', hint: b.docs.designation ? 'Received' : 'Of the authorized representative' },
+    ...(b.docs.viaRep ? [{ ok: b.docs.spa, label: 'Special Power of Attorney', hint: b.docs.spa ? 'Received' : 'Needed when claiming through a representative' }] : []),
+    { ok: !!(b.focal.name && b.focal.phone), label: 'Focal person and mobile number', hint: b.focal.name || b.focal.phone ? [b.focal.name, b.focal.phone].filter(Boolean).join(' · ') : 'Who gets the SMS reminders' },
+  ]
+  const done = items.filter((i) => i.ok).length
+  return (
+    <Box title="What your barangay needs" aside={<Chip tone={done === items.length ? 'ok' : 'warn'}>{done} of {items.length} done</Chip>} className="dash-card">
+      <ul className="checklist">
+        {items.map((i) => (
+          <li key={i.label}>
+            <span className={`dot ${i.ok ? 'ok' : 'bad'}`} aria-hidden="true">{i.ok ? '✓' : '!'}</span>
+            <span>
+              <b>{i.label}</b>
+              <small>{i.hint}</small>
+              {i.link && <a className="linkbtn" href={href(i.link.to)}>{i.link.text}</a>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="box-ft">
+        <a className="btn" href={href({ page: 'barangays', brgy: null })}>Open the tanod list and documents</a>
+      </div>
+    </Box>
+  )
+}
+
+/** A barangay secretary's home: their one barangay. */
+function SecretaryHome({ A }: { A: Analysis }) {
+  const sub = useStore((s) => s.sub)
+  const name = useAuth((s) => s.profile?.full_name.trim().split(/\s+/)[0])
+  const previous = useStore((s) => s.previous)
+  const copyPrevious = useStore((s) => s.copyPrevious)
+  const editable = useEditable()
+  const b = sub.brgys[0]
+  if (!b) return null
+  const n = b.tanods.length
+  // A new year with an empty list: the quickest start is last year's tanods.
+  const lastYear = !n && editable ? previous?.brgys[b.name] ?? [] : []
+  const signed = b.tanods.filter((t) => t.ids >= 3).length
+  const needed = 2 + (b.docs.viaRep ? 1 : 0)
+  const got = (b.docs.cert ? 1 : 0) + (b.docs.designation ? 1 : 0) + (b.docs.viaRep && b.docs.spa ? 1 : 0)
+  return (
+    <section className="page-section dash">
+      <div className="welcome">
+        <div>
+          <h1>{greeting()}{name ? `, ${name}` : ''}</h1>
+          <p className="sub">Brgy. {b.name}, {sub.municipality} · tanod incentive for CY {sub.year}</p>
+        </div>
+        {lastYear.length ? (
+          <button
+            type="button"
+            className="btn primary big"
+            onClick={() => {
+              const copied = copyPrevious([b.name])
+              toast(`Copied ${plural(copied, 'tanod')} from CY ${previous!.year}. Remove anyone who is not continuing, then add the new ones.`)
+              navigate({ page: 'barangays', brgy: null })
+            }}
+          >
+            Copy CY {previous!.year}'s list ({plural(lastYear.length, 'tanod')}) {Icon.next}
+          </button>
+        ) : (
+          <a className="btn primary big" href={href({ page: 'barangays', brgy: null })}>
+            {n ? 'Open the tanod list' : 'Start listing tanods'} {Icon.next}
+          </a>
+        )}
+      </div>
+      <ScansWaiting />
+      <div className="kpis">
+        <Kpi label="Tanods listed" value={`${n} of ${b.limit}`} note={n > b.limit ? `${n - b.limit} over the limit` : `${b.limit - n} more allowed`} tone={n > b.limit ? 'bad' : undefined} />
+        <Kpi label="ID photocopies" value={`${signed} of ${n}`} note="With all 3 signatures" tone={n && signed === n ? 'ok' : undefined} />
+        <Kpi label="Documents" value={`${got} of ${needed}`} note="Received" tone={got === needed ? 'ok' : undefined} />
+        <Kpi label="Problems to fix" value={String(A.errs)} note={A.errs ? 'The Tanod Rep needs these fixed' : 'Nothing to fix'} tone={A.errs ? 'bad' : 'ok'} />
+      </div>
+      <div className="dash-grid sec">
+        <Checklist b={b} />
+        <Attention A={A} />
+      </div>
+      <OtherBarangays />
+    </section>
+  )
+}
+
 /** Administrators switch between the work on this device and the whole province. */
 function ViewSwitch({ view }: { view: 'local' | 'province' }) {
   const municipality = useStore((s) => s.sub.municipality)
@@ -289,7 +385,9 @@ function ViewSwitch({ view }: { view: 'local' | 'province' }) {
 }
 
 export function DashboardPage({ A, view }: { A: Analysis; view?: 'province' }) {
-  const isAdmin = useAuth((s) => s.profile?.role === 'admin')
+  const role = useAuth((s) => s.profile?.role)
+  const isAdmin = role === 'admin'
+  if (role === 'secretary') return <SecretaryHome A={A} />
   if (isAdmin && view === 'province')
     return (
       <section className="page-section dash">

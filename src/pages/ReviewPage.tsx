@@ -4,7 +4,12 @@ import { expectedPayee, type Analysis } from '../domain/analyze'
 import { digits, norm, peso, plural } from '../domain/format'
 import type { ObrKey } from '../domain/types'
 import { href } from '../state/route'
-import { useStore } from '../state/store'
+import { useState } from 'react'
+
+import { useStore, type SubmissionStatus } from '../state/store'
+import { purgeSubmissionScans } from '../lib/scans'
+import { setSubmissionStatus } from '../state/sync'
+import { toast } from '../state/toast'
 
 function Stats({ A }: { A: Analysis }) {
   const sub = useStore((s) => s.sub)
@@ -85,6 +90,68 @@ function ObrCheck({ A }: { A: Analysis }) {
   )
 }
 
+/** Open → submitted (secretaries locked out) → closed (nobody can change it). */
+function StatusBox() {
+  const status = useStore((s) => s.remote?.status)
+  const year = useStore((s) => s.sub.year)
+  const [busy, setBusy] = useState(false)
+  const change = async (to: SubmissionStatus, done: string, ask?: string) => {
+    if (ask && !window.confirm(ask)) return
+    setBusy(true)
+    try {
+      // ID and document photos are kept only until the year is closed.
+      const sid = useStore.getState().remote?.submissionId
+      if (to === 'closed' && sid) await purgeSubmissionScans(sid)
+      await setSubmissionStatus(to)
+      toast(done)
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  if (!status) return null
+  return (
+    <Box title={`CY ${year} list`} aside={<Chip tone={status === 'open' ? 'warn' : 'ok'}>{status === 'open' ? 'Open for encoding' : status === 'submitted' ? 'Submitted' : 'Closed'}</Chip>}>
+      <div className="box-bd stack">
+        {status === 'open' && (
+          <>
+            <p>Barangay secretaries can still change their own lists. When everything checks out, lock it so nothing changes while you print and submit.</p>
+            <div className="row">
+              <button type="button" className="btn primary" disabled={busy} onClick={() => change('submitted', `CY ${year} is locked. Secretaries can no longer change their lists.`)}>
+                Lock and mark as submitted
+              </button>
+            </div>
+          </>
+        )}
+        {status === 'submitted' && (
+          <>
+            <p>Locked. Secretaries can view their lists but not change them. You can still fix mistakes here.</p>
+            <div className="row">
+              <button type="button" className="btn" disabled={busy} onClick={() => change('open', `CY ${year} is open again for secretaries.`)}>Reopen for secretaries</button>
+              <button type="button" className="btn" disabled={busy}
+                onClick={() => change('closed', `CY ${year} is closed.`, `Close CY ${year} for good? Nobody can change the lists afterwards, and all scanned ID and document photos for CY ${year} are deleted permanently. Print or save everything you need first.`)}>
+                Close CY {year}
+              </button>
+            </div>
+          </>
+        )}
+        {status === 'closed' && (
+          <>
+            <p>Closed. The lists can be viewed and printed, but nobody can change them.</p>
+            <div className="row">
+              <button type="button" className="btn" disabled={busy}
+                onClick={() => change('submitted', `CY ${year} is reopened for corrections.`, `Reopen CY ${year} for corrections? Only you and administrators will be able to change it.`)}>
+                Reopen for corrections
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Box>
+  )
+}
+
 export function ReviewPage({ A }: { A: Analysis }) {
   const sub = useStore((s) => s.sub)
   return (
@@ -94,6 +161,7 @@ export function ReviewPage({ A }: { A: Analysis }) {
         sub="The municipality is submitted as one set, so one incomplete barangay holds up everyone. Clear every blocking issue before printing, or the pages carry a DRAFT mark."
       />
       <Stats A={A} />
+      <StatusBox />
       <div className="grid2">
         <Box title="What needs fixing" aside={<Chip tone={A.errs ? 'bad' : 'ok'}>{plural(A.issues.length, 'item')}</Chip>}>
           <IssueGroups A={A} />

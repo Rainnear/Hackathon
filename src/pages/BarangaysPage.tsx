@@ -8,6 +8,13 @@ import { clean, cleanMI, fullName, plural } from '../domain/format'
 import { blankTanod } from '../domain/submission'
 import { POSITIONS, SUFFIXES, type Barangay, type DocKey, type Position, type RowNote, type Suffix, type Tanod } from '../domain/types'
 import { href, navigate } from '../state/route'
+import { DocPhoto, ScanUpload } from '../components/ScanUpload'
+import { IdPhotosButton, ScansWaiting } from '../components/ScanReview'
+import { DepartureDialog } from '../components/DepartureDialog'
+import { NavIcon } from '../components/icons'
+import { useEditable } from '../state/access'
+import { useScans } from '../state/scans'
+import { useAuth } from '../state/auth'
 import { useStore } from '../state/store'
 import { toast } from '../state/toast'
 
@@ -72,6 +79,7 @@ function RosterRow({ t, award, notes, brgy, autoFocus, onRemove }: { t: Tanod; a
   const updateTanod = useStore((s) => s.updateTanod)
   const set = (patch: Partial<Tanod>) => updateTanod(brgy, t.id, patch)
   const nc = nameClass(notes)
+  const hasId = useScans((s) => s.list.some((x) => x.tanod_id === t.id && x.status === 'saved'))
   const p = `f_${t.id}_`
   return (
     <div className="rrow">
@@ -100,9 +108,10 @@ function RosterRow({ t, award, notes, brgy, autoFocus, onRemove }: { t: Tanod; a
       <button type="button" className="c-del iconbtn del" aria-label={`Remove ${fullName(t) || 'this row'}`} onClick={onRemove}>
         {Icon.x}
       </button>
-      {notes && notes.length > 0 && (
+      {((notes && notes.length > 0) || hasId) && (
         <div className="c-note">
-          {notes.map((n, i) => (
+          {hasId && <IdPhotosButton tanodId={t.id} />}
+          {(notes ?? []).map((n, i) => (
             <span key={i} className={n.level}>
               {n.text}
               {n.sms && <SmsActions compact text={n.sms} brgy={n.brgy} />}
@@ -127,12 +136,18 @@ function parsePasted(text: string): Tanod[] {
     })
 }
 
-function Roster({ b, A }: { b: Barangay; A: Analysis }) {
+function Roster({ b, A, solo }: { b: Barangay; A: Analysis; solo: boolean }) {
   const addTanods = useStore((s) => s.addTanods)
   const removeTanod = useStore((s) => s.removeTanod)
   const insertTanod = useStore((s) => s.insertTanod)
   const [focusId, setFocusId] = useState<string | null>(null)
   const [paste, setPaste] = useState('')
+  const [scanning, setScanning] = useState(false)
+  const [leaving, setLeaving] = useState<Tanod | null>(null)
+  const removeWithReason = useStore((s) => s.removeWithReason)
+  const previous = useStore((s) => s.previous)
+  const year = useStore((s) => s.sub.year)
+  const lastYearIds = new Set((previous?.brgys[b.name] ?? []).map((t) => t.id))
   const full = b.tanods.length >= b.limit
 
   const add = () => {
@@ -140,14 +155,15 @@ function Roster({ b, A }: { b: Barangay; A: Analysis }) {
     addTanods(b.name, [t])
     setFocusId(t.id)
   }
-  const remove = (t: Tanod) => {
-    const gone = removeTanod(b.name, t.id)
+  const undoable = (t: Tanod, gone: { index: number; tanod: Tanod } | null) => {
     if (gone)
-      toast(`Removed ${fullName(t) || 'the row'}. Award numbers were updated.`, {
+      toast(`Removed ${fullName(t) || 'the row'}.${solo ? '' : ' Award numbers were updated.'}`, {
         label: 'Undo',
         run: () => insertTanod(b.name, gone.index, gone.tanod),
       })
   }
+  // Someone carried over from last year: ask why they are leaving, for the tanod records.
+  const remove = (t: Tanod) => (lastYearIds.has(t.id) ? setLeaving(t) : undoable(t, removeTanod(b.name, t.id)))
   const addPasted = () => {
     const rows = parsePasted(paste)
     if (!rows.length) return toast('Paste at least one line first.')
@@ -162,20 +178,38 @@ function Roster({ b, A }: { b: Barangay; A: Analysis }) {
     <Box
       title="Tanods"
       aside={
-        <button type="button" className="btn primary" onClick={add} disabled={full}>
-          {full ? 'Limit reached' : 'Add tanod'}
-        </button>
+        <div className="row">
+          <button type="button" className="btn" onClick={() => setScanning(true)}>{NavIcon.camera} Scan IDs</button>
+          <button type="button" className="btn primary" onClick={add} disabled={full}>
+            {full ? 'Limit reached' : 'Add tanod'}
+          </button>
+        </div>
       }
     >
-      <p className="box-sub note">Award numbers run across the whole municipality and update when rows are added or removed.</p>
+      <ScanUpload b={b} open={scanning} onClose={() => setScanning(false)} />
+      <DepartureDialog
+        tanod={leaving}
+        year={year}
+        onCancel={() => setLeaving(null)}
+        onConfirm={(reason, note) => {
+          const t = leaving!
+          setLeaving(null)
+          undoable(t, removeWithReason(b.name, t.id, { name: fullName(t), reason, note }))
+        }}
+      />
+      <p className="box-sub note">
+        {solo
+          ? 'Type each tanod as written on their ID. The Tanod Rep assigns the award numbers when the whole municipality is put together.'
+          : 'Award numbers run across the whole municipality and update when rows are added or removed.'}
+      </p>
       <div className="rrow rhead" aria-hidden="true">
         <span className="c-no">No.</span><span className="c-last">Last name</span><span className="c-first">First name</span><span className="c-mi">M.I.</span>
         <span className="c-sfx">Suffix</span><span className="c-pos">Position</span><span className="c-ids">ID signs</span><span className="c-del" />
       </div>
       <div className="rows">
         {b.tanods.length ? (
-          b.tanods.map((t) => (
-            <RosterRow key={t.id} t={t} award={A.awards[t.id]} notes={A.notes[t.id]} brgy={b.name} autoFocus={t.id === focusId} onRemove={() => remove(t)} />
+          b.tanods.map((t, i) => (
+            <RosterRow key={t.id} t={t} award={solo ? i + 1 : A.awards[t.id]} notes={A.notes[t.id]} brgy={b.name} autoFocus={t.id === focusId} onRemove={() => remove(t)} />
           ))
         ) : (
           <p className="empty">No tanods yet for Brgy. {b.name}.</p>
@@ -195,16 +229,65 @@ function Roster({ b, A }: { b: Barangay; A: Analysis }) {
   )
 }
 
+/** An empty barangay that had tanods last year: start from that list instead of typing it again. */
+function CopyLastYear({ b }: { b: Barangay }) {
+  const previous = useStore((s) => s.previous)
+  const copyPrevious = useStore((s) => s.copyPrevious)
+  const editable = useEditable()
+  const rows = previous?.brgys[b.name] ?? []
+  if (b.tanods.length || !rows.length || !editable) return null
+  return (
+    <div className="banner copy-banner">
+      <span>
+        <b>Start from last year's list.</b> Brgy. {b.name} had {plural(rows.length, 'tanod')} in CY {previous!.year}. Copy them, then remove anyone who is not continuing and add the new ones.
+      </span>
+      <button type="button" className="btn primary" onClick={() => toast(`Copied ${plural(copyPrevious([b.name]), 'tanod')} from CY ${previous!.year}. ID signatures start at 0 for this year.`)}>
+        Copy {plural(rows.length, 'tanod')}
+      </button>
+    </div>
+  )
+}
+
+/** Tanod Rep: copy last year's list into every barangay that hasn't started this year. */
+function CopyAllBarangays() {
+  const previous = useStore((s) => s.previous)
+  const brgys = useStore((s) => s.sub.brgys)
+  const copyPrevious = useStore((s) => s.copyPrevious)
+  const editable = useEditable()
+  const ready = brgys.filter((b) => !b.tanods.length && previous?.brgys[b.name]?.length)
+  if (!previous || ready.length < 2 || !editable) return null
+  const n = ready.reduce((a, b) => a + previous.brgys[b.name].length, 0)
+  return (
+    <div className="banner copy-banner">
+      <span>
+        <b>{plural(ready.length, 'barangay')} can start from CY {previous.year}'s list</b> ({plural(n, 'tanod')}). Barangays that already started this year are left as they are.
+      </span>
+      <button
+        type="button"
+        className="btn primary"
+        onClick={() => {
+          if (window.confirm(`Copy CY ${previous.year}'s tanods into ${plural(ready.length, 'barangay')} that haven't started CY ${useStore.getState().sub.year}?`))
+            toast(`Copied ${plural(copyPrevious(ready.map((b) => b.name)), 'tanod')} from CY ${previous.year}.`)
+        }}
+      >
+        Copy into {plural(ready.length, 'barangay')}
+      </button>
+    </div>
+  )
+}
+
 function DocCheck({ b, k, label, hint, indent = false }: { b: Barangay; k: DocKey; label: string; hint: string; indent?: boolean }) {
   const setDoc = useStore((s) => s.setDoc)
   return (
-    <label className={`check ${indent ? 'indent' : ''}`}>
+    // Not one big <label>: the photo controls inside must not toggle the checkbox.
+    <div className={`check ${indent ? 'indent' : ''}`}>
       <input type="checkbox" id={`doc_${k}`} checked={b.docs[k]} onChange={(e) => setDoc(b.name, k, e.target.checked)} />
       <span>
-        {label}
+        <label htmlFor={`doc_${k}`}>{label}</label>
         <small>{hint}</small>
+        <DocPhoto b={b} k={k} />
       </span>
-    </label>
+    </div>
   )
 }
 
@@ -216,6 +299,9 @@ function Requirements({ b }: { b: Barangay }) {
     <Box title="Requirements" aside={<span className="note">Tick what you have received</span>}>
       <div className="box-bd">
         <DocCheck b={b} k="cert" label="Barangay Certification" hint="Signed by the Punong Barangay" />
+        <p className="cert-link">
+          <a className="linkbtn" href={href({ page: 'certificate', brgy: b.name })}>Print the certification form, filled in with this list</a>
+        </p>
         <div className="check">
           <span className={`dot ${idsOK ? 'ok' : 'bad'}`} aria-hidden="true">{idsOK ? '✓' : '!'}</span>
           <span>
@@ -274,33 +360,41 @@ function Attention({ b, A }: { b: Barangay; A: Analysis }) {
 }
 
 export function BarangaysPage({ A, brgy }: { A: Analysis; brgy: string | null }) {
-  const brgys = useStore((s) => s.sub.brgys)
+  const sub = useStore((s) => s.sub)
+  const brgys = sub.brgys
   const lastBrgy = useStore((s) => s.lastBrgy)
   const setLastBrgy = useStore((s) => s.setLastBrgy)
+  // A secretary's copy holds only their own barangay: no list to pick from, no award numbers.
+  const solo = useAuth((s) => s.profile?.role === 'secretary')
+  const editable = useEditable()
   const b = brgys.find((x) => x.name === brgy) ?? brgys.find((x) => x.name === lastBrgy) ?? brgys[0]
-  const ix = brgys.indexOf(b)
-  const st = A.status[b.name]
-  const n = b.tanods.length
+  const name = b?.name
+  const remoteId = useStore((s) => (name ? s.remote?.brgyIds[name] : undefined))
 
   // Remember the open barangay so the Barangays step reopens it.
   // Braces matter: the persisted store's setter returns a promise, and an effect may only return a cleanup function.
   useEffect(() => {
-    setLastBrgy(b.name)
-  }, [b.name, setLastBrgy])
+    if (name) setLastBrgy(name)
+  }, [name, setLastBrgy])
 
-  const range = n ? ` · Award nos. ${A.awards[b.tanods[0].id]}–${A.awards[b.tanods[n - 1].id]}` : ''
+  if (!b) return <div className="banner">No barangays are loaded yet.</div>
+  const ix = brgys.indexOf(b)
+  const st = A.status[b.name]
+  const n = b.tanods.length
+  const range = n && !solo ? ` · Award nos. ${A.awards[b.tanods[0].id]}–${A.awards[b.tanods[n - 1].id]}` : ''
   const prev = brgys[ix - 1]
   const next = brgys[ix + 1]
 
   return (
     <section className="page-section">
-      <div className="split">
-        <Rail A={A} current={b.name} />
-        <div className="editor">
+      {!solo && <CopyAllBarangays />}
+      <div className={`split ${solo ? 'solo' : ''}`}>
+        {!solo && <Rail A={A} current={b.name} />}
+        <fieldset className="editor plain" disabled={!editable}>
           <div className="ed-head">
             <div>
-              <div className="eyebrow">Barangay {ix + 1} of {brgys.length}{range}</div>
-              <h2>{b.name}</h2>
+              <div className="eyebrow">{solo ? `${sub.municipality} · CY ${sub.year}` : `Barangay ${ix + 1} of ${brgys.length}${range}`}</div>
+              <h2>{solo ? `Brgy. ${b.name}` : b.name}</h2>
             </div>
             <div className="ed-meta">
               <Chip tone={st.tone}>{st.label}</Chip>
@@ -308,20 +402,24 @@ export function BarangaysPage({ A, brgy }: { A: Analysis; brgy: string | null })
                 <b className="num">{n}</b>
                 <span className="num"> / {b.limit}</span> tanods allowed
               </span>
-              <span className="pn">
-                {prev ? <a className="iconbtn" href={href({ page: 'barangays', brgy: prev.name })} aria-label={`Previous: ${prev.name}`}>{Icon.prev}</a> : <span className="iconbtn off">{Icon.prev}</span>}
-                {next ? <a className="iconbtn" href={href({ page: 'barangays', brgy: next.name })} aria-label={`Next: ${next.name}`}>{Icon.next}</a> : <span className="iconbtn off">{Icon.next}</span>}
-              </span>
+              {!solo && (
+                <span className="pn">
+                  {prev ? <a className="iconbtn" href={href({ page: 'barangays', brgy: prev.name })} aria-label={`Previous: ${prev.name}`}>{Icon.prev}</a> : <span className="iconbtn off">{Icon.prev}</span>}
+                  {next ? <a className="iconbtn" href={href({ page: 'barangays', brgy: next.name })} aria-label={`Next: ${next.name}`}>{Icon.next}</a> : <span className="iconbtn off">{Icon.next}</span>}
+                </span>
+              )}
             </div>
           </div>
+          <CopyLastYear b={b} />
+          <ScansWaiting barangayId={remoteId} />
           <Attention b={b} A={A} />
-          <Roster key={b.name} b={b} A={A} />
+          <Roster key={b.name} b={b} A={A} solo={solo} />
           <div className="grid2 even">
             <Requirements b={b} />
             <FocalPerson b={b} />
           </div>
-          <NextStep to={{ page: 'review' }} label="Continue to Review" />
-        </div>
+          {!solo && <NextStep to={{ page: 'review' }} label="Continue to Review" />}
+        </fieldset>
       </div>
     </section>
   )

@@ -186,6 +186,12 @@ export function analyze(sub: Submission, currentYear: number): Analysis {
   }
 }
 
+/** A secretary works on one barangay: municipality-wide setup and ObR checks are the Tanod Rep's. */
+export function scopeToBarangay(A: Analysis, name: string): Analysis {
+  const issues = A.issues.filter((i) => i.brgy === name)
+  return { ...A, issues, errs: issues.filter((i) => i.level === 'error').length }
+}
+
 export const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'todo', label: 'Needs work' },

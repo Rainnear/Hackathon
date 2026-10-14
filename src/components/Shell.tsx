@@ -10,6 +10,8 @@ import { peso } from '../domain/format'
 import type { Analysis } from '../domain/analyze'
 import type { Tone } from '../domain/types'
 import { NavIcon } from './icons'
+import { SyncBadge } from './SyncStatus'
+import { useSafeSignOut } from '../state/access'
 
 interface NavItem {
   to: Route
@@ -25,6 +27,18 @@ function useNavItems(route: Route, A: Analysis): NavItem[] {
   const sub = useStore((s) => s.sub)
   const lastBrgy = useStore((s) => s.lastBrgy)
   const role = useAuth((s) => s.profile?.role)
+  if (role === 'secretary') {
+    const b = sub.brgys[0]
+    const n = b?.tanods.length ?? 0
+    return [
+      { to: { page: 'dashboard' }, label: 'My barangay', icon: NavIcon.home },
+      {
+        to: { page: 'barangays', brgy: null }, label: 'Tanods', step: 'Encode the list', icon: NavIcon.barangays,
+        badge: b ? { text: `${n}/${b.limit}`, tone: n > b.limit || A.errs ? 'bad' : n && !A.issues.length ? 'ok' : '' } : undefined,
+      },
+      { to: { page: 'records', brgy: null }, label: 'Records', step: 'Past and present tanods', icon: NavIcon.records },
+    ]
+  }
   const setupIssues = A.issues.filter((i) => i.kind === 'setup')
   const setupErrs = setupIssues.filter((i) => i.level === 'error').length
   const total = sub.brgys.length
@@ -47,12 +61,13 @@ function useNavItems(route: Route, A: Analysis): NavItem[] {
       badge: { text: A.errs ? 'Draft' : 'Ready', tone: A.errs ? 'warn' : 'ok' },
     },
   ]
+  items.push({ to: { page: 'records', brgy: null }, label: 'Tanod records', icon: NavIcon.records })
   if (role === 'rep' || role === 'admin') items.push({ to: { page: 'accounts' }, label: 'Accounts', icon: NavIcon.accounts })
   return items
 }
 
 function SignOutButton({ className = '' }: { className?: string }) {
-  const signOut = useAuth((s) => s.signOut)
+  const signOut = useSafeSignOut()
   return (
     <button type="button" className={`btn ${className}`} onClick={signOut}>
       {NavIcon.signOut} Sign out
@@ -128,7 +143,7 @@ export function Sidebar({ route, A }: { route: Route; A: Analysis }) {
   const items = useNavItems(route, A)
   const profile = useAuth((s) => s.profile)
   const offline = useAuth((s) => s.offline)
-  const where = profile?.role === 'secretary' && profile.barangay ? `Brgy. ${profile.barangay}` : profile?.municipality
+  const where = profile?.role === 'secretary' && profile.barangay ? `Brgy. ${profile.barangay}, ${profile.municipality}` : profile?.municipality
   return (
     <aside className="side no-print">
       <Brand />
@@ -163,9 +178,13 @@ export function Sidebar({ route, A }: { route: Route; A: Analysis }) {
 
 /** The bottom tab bar on phones, where a sidebar would take the whole screen. */
 export function TabBar({ route, A }: { route: Route; A: Analysis }) {
-  const items = useNavItems(route, A).filter((it) => it.to.page !== 'accounts')
+  const role = useAuth((s) => s.profile?.role)
+  // The phone tab bar holds the everyday pages; Records and Accounts stay in the menu above.
+  const items = useNavItems(route, A).filter((it) => it.to.page !== 'accounts' && (role === 'secretary' || it.to.page !== 'records'))
+  // Secretaries have only two pages, so Help gets a tab of its own.
+  if (role === 'secretary') items.push({ to: { page: 'help', from: route.page === 'help' ? route.from : location.hash || null }, label: 'Help', icon: NavIcon.help })
   return (
-    <nav className="tabbar no-print" aria-label="Main">
+    <nav className="tabbar no-print" aria-label="Main" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
       {items.map((it) => (
         <a key={it.label} href={href(it.to)} aria-current={route.page === it.to.page ? 'page' : undefined}>
           {it.icon}
@@ -182,27 +201,39 @@ export function TopBar({ route, A }: { route: Route; A: Analysis }) {
   const sub = useStore((s) => s.sub)
   const role = useAuth((s) => s.profile?.role)
   const total = sub.brgys.length
+  const b = sub.brgys[0]
   return (
     <header className="topbar no-print">
       <div className="only-phone">
         <Brand />
       </div>
-      <div className="ctx">
-        <b>{sub.municipality}</b>
-        <span>CY <span className="num">{sub.year}</span></span>
-        <span><span className="num">{A.totals.n}</span> tanods</span>
-        <span className="num">{peso(A.totals.amt)}</span>
-        <span className="ready">
-          <span className="bar">
-            <i className={A.ready === total ? 'ok' : ''} style={{ width: `${(A.ready / total) * 100}%` }} />
+      {role === 'secretary' && b ? (
+        <div className="ctx">
+          <b>Brgy. {b.name}</b>
+          <span>{sub.municipality}</span>
+          <span>CY <span className="num">{sub.year}</span></span>
+          <span><span className="num">{b.tanods.length}</span> of {b.limit} tanods</span>
+          <SyncBadge />
+        </div>
+      ) : (
+        <div className="ctx">
+          <b>{sub.municipality}</b>
+          <span>CY <span className="num">{sub.year}</span></span>
+          <span><span className="num">{A.totals.n}</span> tanods</span>
+          <span className="num">{peso(A.totals.amt)}</span>
+          <span className="ready">
+            <span className="bar">
+              <i className={A.ready === total ? 'ok' : ''} style={{ width: `${total ? (A.ready / total) * 100 : 0}%` }} />
+            </span>
+            <span>
+              <span className="num">{A.ready}</span> of {total} barangays ready
+            </span>
           </span>
-          <span>
-            <span className="num">{A.ready}</span> of {total} barangays ready
-          </span>
-        </span>
-      </div>
+          <SyncBadge />
+        </div>
+      )}
       <div className="only-phone row">
-        <HelpLink route={route} className="btn sm help-btn" />
+        {role !== 'secretary' && <HelpLink route={route} className="btn sm help-btn" />}
         {(role === 'rep' || role === 'admin') && <a className="btn sm" href={href({ page: 'accounts' })}>Accounts</a>}
         <SignOutButton className="sm" />
       </div>

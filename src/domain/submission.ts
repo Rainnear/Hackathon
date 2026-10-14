@@ -1,6 +1,6 @@
 import { MIN_AMOUNT, PROVINCIAL_SIGNATORIES, findMunicipality, type MunicipalityRef } from '../data/municipalities'
-import { newId } from './format'
-import { POSITIONS, SUFFIXES, type Barangay, type Position, type Signatories, type Submission, type Suffix, type Tanod } from './types'
+import { isUuid, newId } from './format'
+import { DEPARTURE_REASONS, POSITIONS, SUFFIXES, type Barangay, type Departure, type Position, type Signatories, type Submission, type Suffix, type Tanod } from './types'
 
 export const blankBarangay = (name: string, limit: number): Barangay => ({
   name,
@@ -8,6 +8,7 @@ export const blankBarangay = (name: string, limit: number): Barangay => ({
   tanods: [],
   docs: { cert: false, designation: false, viaRep: false, spa: false },
   focal: { name: '', phone: '' },
+  left: [],
 })
 
 export const blankTanod = (): Tanod => ({ id: newId(), last: '', first: '', mi: '', suffix: '', pos: 'BARANGAY TANOD', ids: 0 })
@@ -83,13 +84,25 @@ function toTanod(raw: unknown): Tanod | null {
   const suffix = SUFFIXES.includes(raw.suffix as Suffix) ? (raw.suffix as Suffix) : ''
   const pos = POSITIONS.some((p) => p.value === raw.pos) ? (raw.pos as Position) : 'BARANGAY TANOD'
   const ids = Math.max(0, Math.min(3, Math.floor(Number(raw.ids) || 0)))
-  return { id: str(raw.id) || newId(), last: str(raw.last), first: str(raw.first), mi: str(raw.mi), suffix, pos, ids }
+  // Older saves used short non-UUID ids; Supabase needs UUIDs.
+  return { id: isUuid(str(raw.id)) ? str(raw.id) : newId(), last: str(raw.last), first: str(raw.first), mi: str(raw.mi), suffix, pos, ids }
+}
+
+function toDeparture(raw: Record<string, unknown>): Departure[] {
+  const reason = DEPARTURE_REASONS.find((r) => r.value === raw.reason)?.value
+  return isUuid(str(raw.tanodId)) && reason ? [{ tanodId: str(raw.tanodId), name: str(raw.name), reason, note: str(raw.note) }] : []
 }
 
 /** Accepts anything that looks like a submission (including the HTML prototype's saved state) and fills gaps. */
 export function normalizeSubmission(raw: unknown): Submission | null {
   if (!isObj(raw) || !Array.isArray(raw.brgys)) return null
-  const muni = findMunicipality(str(raw.municipality)) ?? findMunicipality('Ajuy')!
+  // Barangays and limits come from the saved data when it has them (they were downloaded from Supabase),
+  // otherwise from the built-in reference list.
+  const saved = raw.brgys.filter(isObj).filter((b) => str(b.name) && Number(b.limit) > 0)
+  const muni: MunicipalityRef =
+    saved.length === raw.brgys.length && saved.length > 0
+      ? { name: str(raw.municipality), barangays: saved.map((b) => [str(b.name), Number(b.limit)] as [string, number]) }
+      : (findMunicipality(str(raw.municipality)) ?? findMunicipality('Ajuy')!)
   const base = newSubmission(muni, Number(raw.year) || new Date().getFullYear())
   const byName = new Map(raw.brgys.filter(isObj).map((b) => [str(b.name), b]))
   const sig = isObj(raw.sig) ? raw.sig : {}
@@ -110,6 +123,7 @@ export function normalizeSubmission(raw: unknown): Submission | null {
         tanods: Array.isArray(s.tanods) ? s.tanods.map(toTanod).filter((t): t is Tanod => !!t) : [],
         docs: { cert: !!docs.cert, designation: !!docs.designation, viaRep: !!docs.viaRep, spa: !!docs.spa },
         focal: { name: str(focal.name), phone: str(focal.phone) },
+        left: Array.isArray(s.left) ? s.left.filter(isObj).flatMap(toDeparture) : [],
       }
     }),
   }

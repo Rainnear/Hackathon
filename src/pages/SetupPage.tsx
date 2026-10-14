@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 
+import { get } from 'idb-keyval'
+
 import { Box, CommitInput, NextStep, PageHead } from '../components/ui'
 import { IssueItem } from '../components/Issues'
-import { MIN_AMOUNT, MUNICIPALITIES, findMunicipality } from '../data/municipalities'
+import { useEditable } from '../state/access'
+import { MIN_AMOUNT } from '../data/municipalities'
 import { SIG_LABELS, SIG_REQUIRED, type Analysis } from '../domain/analyze'
 import { clean, formatDateTime, peso, plural } from '../domain/format'
-import { backupFileName, makeBackup, newSubmission, parseBackup, sampleSubmission } from '../domain/submission'
+import { backupFileName, makeBackup, normalizeSubmission, parseBackup } from '../domain/submission'
 import type { SignatoryKey, Submission } from '../domain/types'
 import { useStore } from '../state/store'
+import { PRESYNC_KEY, forgetPresync, switchYear } from '../state/sync'
 import { toast } from '../state/toast'
 
 function SignatoryField({ k }: { k: SignatoryKey }) {
@@ -50,18 +54,32 @@ function usePersistedStorage() {
   return { persisted, request }
 }
 
-type Pending = { kind: 'import'; sub: Submission; savedAt: string | null; file: string } | { kind: 'sample' } | { kind: 'erase' }
+type Confirm = { kind: 'import'; sub: Submission; savedAt: string | null; file: string } | { kind: 'presync'; sub: Submission }
 
 function DataBox() {
   const sub = useStore((s) => s.sub)
   const lastBackupAt = useStore((s) => s.lastBackupAt)
-  const replaceSubmission = useStore((s) => s.replaceSubmission)
+  const replaceRosters = useStore((s) => s.replaceRosters)
   const markBackedUp = useStore((s) => s.markBackedUp)
-  const [pending, setPending] = useState<Pending | null>(null)
+  const editable = useEditable()
+  const [confirming, setConfirming] = useState<Confirm | null>(null)
+  const [presync, setPresync] = useState<Submission | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const { persisted, request } = usePersistedStorage()
   const n = sub.brgys.reduce((a, b) => a + b.tanods.length, 0)
+  const count = (s: Submission) => s.brgys.reduce((a, b) => a + b.tanods.length, 0)
+
+  // Tanods typed on this device before Sakto saved online, kept aside on the first download.
+  useEffect(() => {
+    get<string>(PRESYNC_KEY).then(
+      (raw) => {
+        const s = raw ? normalizeSubmission(JSON.parse(raw)) : null
+        setPresync(s && s.municipality === sub.municipality && count(s) ? s : null)
+      },
+      () => {},
+    )
+  }, [sub.municipality])
 
   const exportBackup = () => {
     const blob = new Blob([makeBackup(sub)], { type: 'application/json' })
@@ -83,70 +101,69 @@ function DataBox() {
     const parsed = parseBackup(await file.text())
     if (fileRef.current) fileRef.current.value = ''
     if (!parsed.ok) return setImportError(parsed.error)
-    setPending({ kind: 'import', sub: parsed.sub, savedAt: parsed.savedAt, file: file.name })
+    if (parsed.sub.municipality !== sub.municipality) return setImportError(`That backup is for ${parsed.sub.municipality}. Sakto is open for ${sub.municipality}.`)
+    setConfirming({ kind: 'import', sub: parsed.sub, savedAt: parsed.savedAt, file: file.name })
   }
 
   const confirm = () => {
-    if (!pending) return
-    const year = new Date().getFullYear()
-    if (pending.kind === 'import') {
-      replaceSubmission(pending.sub)
-      toast(`Backup restored: ${pending.sub.municipality}, CY ${pending.sub.year}.`)
-    } else if (pending.kind === 'sample') {
-      replaceSubmission(sampleSubmission(year))
-      toast('Sample data loaded. The tanod names are made up.')
-    } else {
-      replaceSubmission(newSubmission(findMunicipality(sub.municipality) ?? MUNICIPALITIES[0], year))
-      toast('All data erased. You are starting a new submission.')
-    }
-    setPending(null)
+    if (!confirming) return
+    replaceRosters(confirming.sub)
+    if (confirming.kind === 'presync') {
+      void forgetPresync()
+      setPresync(null)
+      toast(`${plural(count(confirming.sub), 'tanod')} queued for upload to CY ${sub.year}.`)
+    } else toast(`Backup restored to CY ${sub.year}. It is uploading now.`)
+    setConfirming(null)
   }
 
-  const pendingText =
-    pending?.kind === 'import'
-      ? (() => {
-          const bn = pending.sub.brgys.reduce((a, b) => a + b.tanods.length, 0)
-          return `Replace what is on this device with ${pending.file}: ${pending.sub.municipality}, CY ${pending.sub.year}, ${plural(bn, 'tanod')}${pending.savedAt ? `, saved ${formatDateTime(pending.savedAt)}` : ''}?`
-        })()
-      : pending?.kind === 'sample'
-        ? 'Replace what is on this device with sample data? Export a backup first if you want to keep your work.'
-        : 'Erase all tanods, documents and ObR details on this device? Export a backup first if you want to keep your work.'
-
   return (
-    <Box title="Your data" aside={<span className="note">Saved on this device only</span>}>
+    <Box title="Your data" aside={<span className="note">Saved online and on this device</span>}>
       <div className="box-bd stack">
         <p className="note">
-          {n ? `${plural(n, 'tanod')} saved in this browser. ` : 'Nothing encoded yet. '}
-          {lastBackupAt ? `Last backup: ${formatDateTime(lastBackupAt)}.` : n ? 'No backup yet. Export one so a lost or reset phone does not lose your work.' : ''}
+          {n ? `${plural(n, 'tanod')} in CY ${sub.year}. ` : 'Nothing encoded yet. '}
+          Changes upload to Supabase on their own, and a copy stays on this device for when there is no internet.
+          {lastBackupAt ? ` Last backup file: ${formatDateTime(lastBackupAt)}.` : ''}
         </p>
         {persisted === false && (
           <p className="note">
-            This browser may clear the data when the device runs low on space.{' '}
-            <button type="button" className="linkbtn" onClick={async () => toast((await request()) ? 'The browser will keep Sakto’s data.' : 'The browser said no. Install the app and export backups regularly.')}>
+            This browser may clear its copy when the device runs low on space.{' '}
+            <button type="button" className="linkbtn" onClick={async () => toast((await request()) ? 'The browser will keep Sakto’s data.' : 'The browser said no. Changes that have not uploaded yet could be lost.')}>
               Ask the browser to keep it
             </button>
           </p>
         )}
-        {pending ? (
+        {presync && !confirming && editable && (
           <div className="confirm">
-            <p>{pendingText}</p>
+            <p>
+              This device has {plural(count(presync), 'tanod')} for {presync.municipality} saved before Sakto went online. Upload them to CY {sub.year}? Barangays in that copy replace what is online now.
+            </p>
             <div className="row">
-              <button type="button" className={`btn ${pending.kind === 'import' ? 'primary' : 'danger'}`} onClick={confirm}>
-                {pending.kind === 'import' ? 'Restore backup' : pending.kind === 'sample' ? 'Load sample data' : 'Erase everything'}
-              </button>
-              <button type="button" className="btn" onClick={() => setPending(null)}>Cancel</button>
+              <button type="button" className="btn primary" onClick={() => setConfirming({ kind: 'presync', sub: presync })}>Upload them</button>
+              <button type="button" className="btn" onClick={() => { void forgetPresync(); setPresync(null) }}>Don't upload</button>
+            </div>
+          </div>
+        )}
+        {confirming ? (
+          <div className="confirm">
+            <p>
+              {confirming.kind === 'import'
+                ? `Replace the CY ${sub.year} lists with ${confirming.file} (${plural(count(confirming.sub), 'tanod')}${confirming.savedAt ? `, saved ${formatDateTime(confirming.savedAt)}` : ''})? Everyone in ${sub.municipality} will see the change.`
+                : `Upload ${plural(count(confirming.sub), 'tanod')} to CY ${sub.year}? Every barangay in that copy replaces what is online now. Everyone in ${sub.municipality} will see the change.`}
+            </p>
+            <div className="row">
+              <button type="button" className="btn primary" onClick={confirm}>{confirming.kind === 'import' ? 'Restore backup' : 'Upload'}</button>
+              <button type="button" className="btn" onClick={() => setConfirming(null)}>Cancel</button>
             </div>
           </div>
         ) : (
           <div className="row">
-            <button type="button" className="btn primary" onClick={exportBackup}>Export backup</button>
-            <label className="btn">
-              Restore from backup
-              <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => onFile(e.target.files?.[0])} />
-            </label>
-            <span className="grow" />
-            <button type="button" className="btn" onClick={() => setPending({ kind: 'sample' })}>Load sample data</button>
-            <button type="button" className="btn danger" onClick={() => setPending({ kind: 'erase' })}>Erase all</button>
+            <button type="button" className="btn primary" onClick={exportBackup}>Export backup file</button>
+            {editable && (
+              <label className="btn">
+                Restore from backup
+                <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => onFile(e.target.files?.[0])} />
+              </label>
+            )}
           </div>
         )}
         {importError && <p className="note bad">{importError}</p>}
@@ -169,7 +186,7 @@ export function SetupPage({ A }: { A: Analysis }) {
       />
       {isNew && (
         <div className="banner">
-          New submission for {sub.municipality}. Check the year, amount and signatories below, then continue to Barangays to encode the tanods. To look around first, load the sample data.
+          CY {sub.year} for {sub.municipality} is open. Check the amount and signatories below. Barangay secretaries can now encode their own tanods, and you can encode for barangays that have no secretary yet.
         </div>
       )}
       {setupIssues.length > 0 && (
@@ -184,10 +201,8 @@ export function SetupPage({ A }: { A: Analysis }) {
           <Box title="Submission">
             <div className="box-bd fields">
               <div className="field">
-                <label htmlFor="muniSel">Municipality</label>
-                <select id="muniSel" value={sub.municipality} disabled={MUNICIPALITIES.length < 2} onChange={() => {}}>
-                  {MUNICIPALITIES.map((m) => <option key={m.name}>{m.name}</option>)}
-                </select>
+                <label htmlFor="muniIn">Municipality</label>
+                <input id="muniIn" value={sub.municipality} readOnly disabled />
               </div>
               <div className="field">
                 <label htmlFor="yearIn">Calendar year (CY)</label>
@@ -202,7 +217,11 @@ export function SetupPage({ A }: { A: Analysis }) {
                       toast('Enter a four-digit year, like 2026.')
                       return String(sub.year)
                     }
-                    setSubmissionField({ year: y })
+                    if (y === sub.year) return
+                    switchYear(y).then(
+                      () => toast(`Opened CY ${y}.`),
+                      (e: Error) => toast(e.message),
+                    )
                   }}
                 />
               </div>
@@ -224,7 +243,7 @@ export function SetupPage({ A }: { A: Analysis }) {
                 />
               </div>
             </div>
-            <p className="box-bd note pt0">Only Ajuy's barangay list is loaded so far. Other Iloilo municipalities can be added from the same provincial list.</p>
+            <p className="box-bd note pt0">The municipality comes from your account. Changing the year opens that year's list; a year that has not been opened yet starts empty.</p>
           </Box>
           <Box title="Masterlist signatories" aside={<span className="note">Sign every page</span>}>
             <div className="box-bd fields">

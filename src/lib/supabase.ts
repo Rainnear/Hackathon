@@ -71,7 +71,7 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
 
 // Supabase returns at most 1,000 rows per request; Iloilo alone has 1,719 barangays.
 const PAGE = 1000
-async function fetchAllPages<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: Error | null }>): Promise<T[]> {
+export async function fetchAllPages<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: Error | null }>): Promise<T[]> {
   const out: T[] = []
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await page(from, from + PAGE - 1)
