@@ -84,9 +84,17 @@ async function printWhenReady() {
   window.print()
 }
 
+const REP_FIRST: TemplateId[] = ['masterlist', 'payroll']
+const REP_ORDER = [...TEMPLATES].sort((a, b) => {
+  const rank = (t: Template) => (REP_FIRST.includes(t.id) ? REP_FIRST.indexOf(t.id) : REP_FIRST.length)
+  return rank(a) - rank(b)
+})
+
 export function TemplatesPage({ A, doc, brgy, tanod = null }: { A: Analysis; doc: TemplateId | null; brgy: string | null; tanod?: string | null }) {
-  const solo = useAuth((s) => s.profile?.role === 'secretary')
-  const list = TEMPLATES.filter((t) => !solo || t.secretary)
+  const role = useAuth((s) => s.profile?.role)
+  const solo = role === 'secretary'
+  // The Liga Rep's set leads with the two forms they prepare for the whole municipality.
+  const list = role === 'rep' ? REP_ORDER : TEMPLATES.filter((t) => !solo || t.secretary)
   const t = list.find((x) => x.id === doc)
   return t ? <TemplateView key={t.id} t={t} A={A} brgy={solo ? null : brgy} tanod={tanod} solo={solo} /> : <Gallery list={list} />
 }
