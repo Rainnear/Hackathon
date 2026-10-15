@@ -65,7 +65,21 @@ const queued = <T>(job: () => Promise<T>): Promise<T> => {
   return next
 }
 
-export const vaultSet = (name: string, value: string) => queued(async () => set(name, await encrypt(name, value)))
+// While locked (after sign-out) nothing is saved, so a sync that was still running cannot write the
+// signed-out person's data back to the device or create a new key. Signing in unlocks it again.
+let locked = false
+export const lockWrites = () => {
+  locked = true
+}
+export const unlockWrites = () => {
+  locked = false
+}
+
+export const vaultSet = (name: string, value: string) =>
+  queued(async () => {
+    if (locked) return
+    await set(name, await encrypt(name, value))
+  })
 export const vaultDel = (name: string) => queued(() => del(name))
 export const vaultGet = async (name: string): Promise<string | null> => {
   const raw = await get<string>(name)

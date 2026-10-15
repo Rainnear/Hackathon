@@ -1,7 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { create } from 'zustand'
 
-import { destroyDeviceKey, vaultDel } from '../lib/vault'
+import { destroyDeviceKey, lockWrites, unlockWrites, vaultDel } from '../lib/vault'
 import { fetchProfile, supabase, supabaseConfigured, type Profile } from '../lib/supabase'
 import { leaveMunicipality } from './adminView'
 import { useScans } from './scans'
@@ -47,6 +47,7 @@ const writeCache = (p: Profile | null) => {
 
 /** Everything Sakto keeps on this device for the person who just signed out, so the next person finds nothing. */
 async function wipeLocalData() {
+  lockWrites()
   writeCache(null)
   leaveMunicipality()
   for (const k of ['sakto-help-draft', 'sakto-certification']) {
@@ -124,3 +125,8 @@ if (supabaseConfigured) {
  */
 export const useMustChangePassword = () =>
   useAuth((s) => s.status === 'signedIn' && !s.passwordChanged && s.session?.user.app_metadata?.must_change_password === true)
+
+// A new sign-in may save on this device again.
+useAuth.subscribe((s) => {
+  if (s.status === 'signedIn') unlockWrites()
+})
