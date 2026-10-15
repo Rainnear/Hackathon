@@ -19,8 +19,8 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        theme_color: '#0E6B57',
-        background_color: '#F3F5F2',
+        theme_color: '#0E5E3B',
+        background_color: '#F5F2E8',
         icons: [
           { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
@@ -30,7 +30,7 @@ export default defineConfig({
       },
       workbox: {
         // Fonts are bundled, so the whole app works with no connection after the first visit.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,ico,woff2}'],
       },
     }),
   ],

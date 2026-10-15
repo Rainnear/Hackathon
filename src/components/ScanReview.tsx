@@ -204,13 +204,38 @@ export function ScansWaiting({ barangayId }: { barangayId?: number }) {
 /** "View ID" on a tanod row whose ID was scanned. */
 export function IdPhotosButton({ tanodId }: { tanodId: string }) {
   const scan = useScans((s) => s.list.find((x) => x.tanod_id === tanodId && x.status === 'saved'))
+  const all = useScans((s) => s.list)
+  const drop = useScans((s) => s.remove)
+  const editable = useEditable()
+  const online = useSync((s) => s.online)
   const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
   if (!scan) return null
   const name = [scan.fields.first, scan.fields.last].filter(Boolean).join(' ')
+  // Deletes the scanned ID (photos and record); the tanod stays on the list. For a wrong or blurry
+  // scan: the ID checks stop until a new one is scanned.
+  const removeId = async () => {
+    if (!window.confirm(`Remove the scanned ID of ${name || 'this tanod'}? The photos are deleted for good. The tanod stays on the list; scan the ID again if you need it.`)) return
+    const mine = all.filter((x) => x.kind === 'id' && x.tanod_id === tanodId)
+    setBusy(true)
+    try {
+      await deleteScans(mine)
+      mine.forEach((x) => drop(x.id))
+      setOpen(false)
+      toast('Scanned ID removed.')
+    } catch (e) {
+      toast((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <>
       {/* A link, not a button: it must keep working when the list is locked (a disabled fieldset). */}
       <a href="#" role="button" className="linkbtn" onClick={(e) => { e.preventDefault(); setOpen(true) }}>View ID</a>
+      {editable && online && (
+        <button type="button" className="linkbtn danger" disabled={busy} onClick={() => void removeId()}>{busy ? 'Removing…' : 'Remove ID'}</button>
+      )}
       <Modal open={open} onClose={() => setOpen(false)} title={`ID of ${name || 'this tanod'}`} wide>
         <div className="modal-bd review-photos">
           <ScanPhoto path={scan.front_path} label="Front" />

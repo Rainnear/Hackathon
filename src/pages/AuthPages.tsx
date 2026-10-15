@@ -14,7 +14,7 @@ import { useAuth } from '../state/auth'
 import { ReportProblem } from './HelpPage'
 import { HallArt, WaitingArt } from '../components/Illustrations'
 
-function AuthCard({ title, sub, children, footer, art }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode; art?: ReactNode }) {
+function AuthCard({ title, sub, children, footer, art, centered = false }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode; art?: ReactNode; centered?: boolean }) {
   return (
     <div className="auth">
       <div className="auth-card">
@@ -26,7 +26,7 @@ function AuthCard({ title, sub, children, footer, art }: { title: string; sub?: 
           </div>
         </div>
         {art}
-        <h2>{title}</h2>
+        <h2 className={centered ? 'center' : undefined}>{title}</h2>
         {sub && <p className="sub">{sub}</p>}
         {children}
       </div>
@@ -76,9 +76,9 @@ function SignIn({ go }: { go: (m: Mode) => void }) {
   }
   return (
     <AuthCard
-      art={<HallArt />}
+      art={<img className="auth-logo" src="/sakto-logo.webp" alt="Sakto" width={720} height={420} />}
       title="Sign in"
-      sub="Barangay secretaries, the municipal Liga Rep and the provincial office sign in here."
+      centered
       footer={<>New here? <button type="button" className="linkbtn" onClick={() => go('signup')}>Create an account</button></>}
     >
       <form className="stack" onSubmit={submit}>

@@ -1,6 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 
 import { Icon } from '../components/icons'
+import { ReviewBox } from '../components/ReviewPanel'
 import { Box, Chip, CommitInput, NextStep } from '../components/ui'
 import { SmsActions } from '../components/Issues'
 import { issueTarget } from '../state/goTo'
@@ -420,6 +421,7 @@ export function BarangaysPage({ A, brgy, focus }: { A: Analysis; brgy: string | 
         </div>
         <aside className="ts-side" aria-label={`Brgy. ${b.name}: checks and requirements`}>
           <SideChecks b={b} A={A} />
+          <ReviewBox b={b} A={A} />
           <fieldset className="plain side-stack" disabled={!editable}>
             <Requirements b={b} />
             {!solo && <FocalPerson b={b} />}

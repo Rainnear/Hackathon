@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 
 import { Icon } from '../components/icons'
 import { Box, Chip, InfoTip } from '../components/ui'
+import { ReviewBanner, ReviewChip, ReviewsWaiting } from '../components/ReviewPanel'
 import { FILTERS, matchesFilter, type Analysis } from '../domain/analyze'
 import { isLate } from '../domain/deadline'
 import { peso, plural } from '../domain/format'
@@ -44,6 +45,9 @@ function useOpenGroup(A: Analysis) {
   }
 }
 
+/** The Sakto logo at the head of every dashboard. */
+const WelcomeLogo = () => <img className="welcome-logo" src="/sakto-logo.webp" alt="Sakto" width={720} height={420} />
+
 function Welcome({ A }: { A: Analysis }) {
   const sub = useStore((s) => s.sub)
   const lastBrgy = useStore((s) => s.lastBrgy)
@@ -59,7 +63,8 @@ function Welcome({ A }: { A: Analysis }) {
 
   return (
     <div className="welcome">
-      <div>
+      <WelcomeLogo />
+      <div className="welcome-t">
         <h1>{greeting()}{name ? `, ${name}` : ''}</h1>
         <p className="sub">{sub.municipality} · CY {sub.year}</p>
       </div>
@@ -285,6 +290,7 @@ function BarangayBoard({ A }: { A: Analysis }) {
                   <span className="chips">
                     <Chip tone={st.tone}>{st.label}</Chip>
                     {late && st.tone !== 'ok' && <Chip tone="bad">Late</Chip>}
+                    <ReviewChip b={b} />
                   </span>
                   <span className="bar big">
                     <i className={over > 0 ? 'over' : st.tone === 'ok' ? 'ok' : ''} style={{ width: `${Math.min(100, (n / b.limit) * 100)}%` }} />
@@ -375,7 +381,8 @@ function SecretaryHome({ A }: { A: Analysis }) {
   return (
     <section className="page-section dash sec-home">
       <div className="welcome">
-        <div>
+        <WelcomeLogo />
+        <div className="welcome-t">
           <h1>{greeting()}{name ? `, ${name}` : ''}</h1>
           <p className="sub">Brgy. {b.name} · CY {sub.year}</p>
         </div>
@@ -397,6 +404,7 @@ function SecretaryHome({ A }: { A: Analysis }) {
           </a>
         )}
       </div>
+      <ReviewBanner b={b} />
       <ScansWaiting />
       <div className="kpis three">
         <Kpi label="Tanods" value={`${n} of ${b.limit}`} note={n > b.limit ? `${n - b.limit} over the limit` : `${b.limit - n} more allowed`} tone={n > b.limit ? 'bad' : undefined} to={list} />
@@ -464,7 +472,8 @@ export function DashboardPage({ A, view }: { A: Analysis; view?: 'province' }) {
       <section className="page-section dash">
         <ViewSwitch view="province" />
         <div className="welcome">
-          <div>
+          <WelcomeLogo />
+          <div className="welcome-t">
             <h1>
               All of Iloilo
               <InfoTip>Every municipality and barangay, who has signed up, and the problems people have reported. Open a municipality to see its dashboard, lists and documents.</InfoTip>
@@ -479,6 +488,7 @@ export function DashboardPage({ A, view }: { A: Analysis; view?: 'province' }) {
       {isAdmin && <ViewSwitch view="local" />}
       <Welcome A={A} />
       {role === 'rep' && <WaitingApprovals />}
+      {role === 'rep' && <ReviewsWaiting />}
       <KpiRow A={A} />
       <div className="dash-grid">
         <ProgressGauge A={A} />

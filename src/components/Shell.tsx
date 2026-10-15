@@ -138,12 +138,10 @@ function InstallButton() {
 
 function Brand() {
   return (
-    <a className="side-brand" href={href({ page: 'dashboard' })}>
-      <img src="/logo.svg" alt="" width="36" height="36" />
-      <span>
-        <b>Sakto</b>
-        <small>Tanod incentive · Iloilo</small>
-      </span>
+    <a className="side-brand word" href={href({ page: 'dashboard' })} aria-label="Sakto: Tanod incentive · Iloilo">
+      <img className="brand-word" src="/sakto-logo.webp" alt="" width="720" height="420" />
+      <img className="brand-mark" src="/logo.svg" alt="" width="36" height="36" />
+      <small>Tanod incentive · Iloilo</small>
     </a>
   )
 }

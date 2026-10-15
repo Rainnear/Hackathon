@@ -1,10 +1,14 @@
 /* Layout: municipal workbench. One status header, a numbered four-step flow (Setup → Barangays → Review → Print),
    a barangay rail beside the editor, and paper previews that match the official forms. */
+/* Colours from the Sakto logo: forest-green letters, a leaf-green check, cream paper and sage lines. */
 :root {
-  --bg: #F3F5F2; --surface: #FFFFFF; --sunk: #E9EDE8; --line: #D3DAD2; --line-strong: #B6C1B5;
-  --ink: #18221E; --muted: #5C6A63; --accent: #0E6B57; --accent-ink: #FFFFFF; --accent-soft: #DCEFE8;
-  --ok: #1C7C45; --ok-soft: #DFF2E5; --warn: #8A5800; --warn-soft: #FBEFD6; --bad: #B3261E; --bad-soft: #FBE3E0;
-  --shadow: 0 1px 3px rgba(20, 34, 28, .12);
+  --bg: #F5F2E8; --surface: #FFFDF7; --sunk: #ECE8DA; --line: #DCD6C4; --line-strong: #BDB7A2;
+  --ink: #10261B; --muted: #5A6A5F; --accent: #0E5E3B; --accent-ink: #FFFDF7; --accent-soft: #E0EDD9;
+  --brand-deep: #0A4129; --leaf: #3E9B45; --leaf-soft: #E3F2DC; --cream: #FBF8EE; --sage: #8A9A8C;
+  --accent-grad: linear-gradient(180deg, #146E46 0%, #0E5E3B 100%);
+  --hero-bg: radial-gradient(90% 160% at 100% 0%, #DCEDD3 0%, rgba(220, 237, 211, 0) 60%), linear-gradient(135deg, #FFFDF7 0%, #F3EFE1 100%);
+  --ok: #1E7B3C; --ok-soft: #DFF1DD; --warn: #8A5800; --warn-soft: #FBEFD6; --bad: #B3261E; --bad-soft: #FBE3E0;
+  --shadow: 0 1px 3px rgba(16, 38, 27, .10), 0 1px 2px rgba(16, 38, 27, .06);
   --paper: #FFFFFF; --paper-ink: #111111; --band: #E6E6E6; --draft: rgba(179, 38, 30, .16); --paper-alert: #B3261E;
   --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
@@ -17,9 +21,12 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121815; --surface: #1A221E; --sunk: #232D28; --line: #33403A; --line-strong: #4A5952;
-    --ink: #E6ECE8; --muted: #9AA8A1; --accent: #4CC3A2; --accent-ink: #06261E; --accent-soft: #163A30;
-    --ok: #5FD08F; --ok-soft: #173826; --warn: #E8B04B; --warn-soft: #3A2D12; --bad: #FF8A80; --bad-soft: #3E1E1B;
+    --bg: #0D1712; --surface: #14211A; --sunk: #1B2B22; --line: #2C3E33; --line-strong: #44584B;
+    --ink: #EEF0E4; --muted: #A2B0A4; --accent: #6CCB6F; --accent-ink: #082112; --accent-soft: #173A24;
+    --brand-deep: #0A4129; --leaf: #7DD77F; --leaf-soft: #1B3F25; --cream: #FBF8EE; --sage: #8A9A8C;
+    --accent-grad: linear-gradient(180deg, #7FD681 0%, #5FBF63 100%);
+    --hero-bg: radial-gradient(90% 160% at 100% 0%, #1D4A2D 0%, rgba(29, 74, 45, 0) 60%), linear-gradient(135deg, #16251D 0%, #111D16 100%);
+    --ok: #6FD487; --ok-soft: #173826; --warn: #E8B04B; --warn-soft: #3A2D12; --bad: #FF8A80; --bad-soft: #3E1E1B;
     --shadow: 0 1px 3px rgba(0, 0, 0, .45);
     color-scheme: dark;
   }
@@ -72,6 +79,12 @@ a { color: inherit }
 .side-brand img { border-radius: 9px; flex: none }
 .side-brand b { display: block; font-weight: 800; font-size: var(--t-xl); letter-spacing: -.02em; color: var(--accent); line-height: 1.1 }
 .side-brand small { display: block; font-size: var(--t-xs); color: var(--muted) }
+/* The wordmark when there is room; the square mark when the menu is folded. */
+.side-brand .brand-mark { display: none }
+.side-brand .brand-word { width: auto; height: 64px; border-radius: 10px }
+.side-brand.word { flex-direction: column; align-items: flex-start; gap: 2px }
+.topbar .side-brand .brand-word { height: 44px }
+.topbar .side-brand.word small { display: none }
 .side-nav { display: flex; flex-direction: column; gap: var(--s1) }
 .side-link {
   display: flex; align-items: center; gap: var(--s3); min-height: 52px; padding: var(--s2) var(--s3);
@@ -81,7 +94,7 @@ a { color: inherit }
 .side-link .lbl { flex: 1; display: flex; flex-direction: column; line-height: 1.2 }
 .side-link .lbl small { font-size: var(--t-xs); font-weight: 500; color: var(--muted) }
 .side-link:hover { background: var(--sunk) }
-.side-link[aria-current="page"] { background: var(--accent); color: var(--accent-ink) }
+.side-link[aria-current="page"] { background: var(--accent-grad); color: var(--accent-ink); box-shadow: inset 4px 0 0 var(--leaf), var(--shadow) }
 .side-link[aria-current="page"] svg, .side-link[aria-current="page"] small { color: inherit; opacity: .9 }
 .side-link[aria-current="page"] .badge { background: var(--accent-ink); color: var(--accent) }
 .side-foot { margin-top: auto; display: flex; flex-direction: column; gap: var(--s2); padding-top: var(--s3); border-top: 1px solid var(--line) }
@@ -170,7 +183,7 @@ main { padding-top: var(--s5) }
 }
 .btn.big { font-size: var(--t-lg); min-height: 54px; padding: 12px 22px; border-radius: var(--r) }
 .btn:hover { background: var(--sunk) }
-.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.btn.primary { background: var(--accent-grad); color: var(--accent-ink); border-color: var(--accent); box-shadow: 0 1px 2px rgba(10, 65, 41, .25) }
 .btn.primary:hover { filter: brightness(1.08) }
 .btn.sm { font-size: var(--t-sm); padding: 6px 12px; min-height: 36px }
 .btn.sm svg { width: 18px; height: 18px }
@@ -400,6 +413,23 @@ tr.band .cont { font-weight: 400; font-style: italic }
 .btn.block { width: 100%; justify-content: center; padding-block: 10px; font-size: var(--t-md) }
 .linkbtn.center { align-self: center }
 .linkbtn.danger { color: var(--bad) }
+/* ---------- The Liga Rep's review: returned with a reason, fixed, accepted ---------- */
+.rv-now { margin: 0; font-weight: 600 }
+.rv-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2) }
+.rv-step { border-left: 3px solid var(--line-strong); padding: 2px 0 2px var(--s3); font-size: var(--t-sm); display: flex; flex-direction: column; gap: 2px }
+.rv-step.returned { border-left-color: var(--bad) }
+.rv-step.resubmitted { border-left-color: var(--warn) }
+.rv-step.accepted { border-left-color: var(--ok) }
+.rv-reason { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 500; color: var(--ink) }
+.rv-hist summary { cursor: pointer; font-weight: 600; font-size: var(--t-sm); color: var(--muted) }
+.rv-hist[open] summary { margin-bottom: var(--s2) }
+.rv-picks { display: flex; flex-direction: column; gap: var(--s2) }
+.rv-picks .check-inline { font-weight: 500; align-items: flex-start }
+.rv-picks input { margin-top: 3px; width: 18px; height: 18px; flex: none; accent-color: var(--accent) }
+.rv-banner { align-items: flex-start }
+.rv-banner .grow { flex: 1; min-width: 0 }
+.rv-banner .rv-reason { color: inherit }
+.rv-text { font-family: var(--f-body); font-size: var(--t-md); line-height: 1.5 }
 .linkbtn:disabled { opacity: .5; cursor: default }
 .pw { position: relative }
 .pw input { padding-right: 56px }
@@ -423,9 +453,26 @@ code { font-family: var(--f-mono); font-size: .92em; background: var(--sunk); pa
 }
 
 /* ---------- Dashboard ---------- */
-.welcome { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4) var(--s5); justify-content: space-between }
-.welcome h1 { margin: 0; font-size: var(--t-2xl); font-weight: 750; letter-spacing: -.015em; text-wrap: balance }
+/* The greeting is a branded card: the logo, who is signed in, and the next thing to do. */
+.welcome {
+  position: relative; overflow: hidden; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4) var(--s5); justify-content: space-between;
+  padding: var(--s5) var(--s5) calc(var(--s5) + 4px); border: 1px solid var(--line); border-radius: 16px; background: var(--hero-bg); box-shadow: var(--shadow);
+}
+/* A leaf-to-forest stripe along the bottom, like the swoosh of the check. */
+.welcome::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 5px; background: linear-gradient(90deg, var(--brand-deep), var(--accent) 45%, var(--leaf)) }
+.welcome-logo { display: block; flex: none; width: 168px; height: auto; border-radius: 12px }
+.welcome-t { flex: 1; min-width: 220px }
+.welcome h1 { margin: 0; font-size: var(--t-2xl); font-weight: 800; letter-spacing: -.015em; text-wrap: balance; color: var(--brand-deep) }
 .welcome .sub { font-size: var(--t-lg) }
+@media (prefers-color-scheme: dark) {
+  .welcome h1 { color: var(--ink) }
+  /* The logo's dark-green outline needs its cream paper behind it on a dark screen. */
+  .welcome-logo, .side-brand .brand-word { background: var(--cream); padding: 4px 8px }
+}
+@media (max-width: 640px) {
+  .welcome { padding: var(--s4) var(--s4) calc(var(--s4) + 4px) }
+  .welcome-logo { width: 132px }
+}
 
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s4) }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4) var(--s5); box-shadow: var(--shadow); min-width: 0 }
@@ -601,6 +648,8 @@ ul.checklist { list-style: none; margin: 0; padding: var(--s2) var(--s4) }
 .bar i.indeterminate { width: 35%; animation: slide 1.2s ease-in-out infinite }
 @keyframes slide { from { transform: translateX(-100%) } to { transform: translateX(300%) } }
 .auth-card h2 { font-size: var(--t-xl) }
+.auth-card h2.center { text-align: center }
+.auth-logo { display: block; width: min(100%, 300px); height: auto; margin: var(--s2) auto 0 }
 
 /* ---------- Pop-ups and scanning ---------- */
 dialog.modal {
@@ -879,6 +928,9 @@ ul.checklist.links { padding: 0 }
 .side.collapsed .side-link { justify-content: center; padding-inline: 0; position: relative }
 .side.collapsed .side-link .badge { position: absolute; top: 2px; right: 0; font-size: 10px; padding: 0 5px; min-width: 0 }
 .side.collapsed .side-foot .btn { padding-inline: 0; justify-content: center }
+.side.collapsed .side-brand .brand-word, .side.collapsed .side-brand small { display: none }
+.side.collapsed .side-brand .brand-mark { display: block }
+.side.collapsed .side-brand.word { align-items: center }
 .checklist.links a { flex: 1; min-width: 0 }
 @media (max-width: 700px) {
   .kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2) }

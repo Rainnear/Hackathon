@@ -24,6 +24,7 @@ import { useAuth, useMustChangePassword } from './state/auth'
 import { href, navigate, useRoute, type Route } from './state/route'
 import { useHydrated, useStore } from './state/store'
 import { useScanSync, useScans } from './state/scans'
+import { useReviewSync } from './state/reviews'
 import { buildReferences } from './state/references'
 import { startSync, useSync } from './state/sync'
 import { useConnectionWatch } from './state/connection'
@@ -106,6 +107,7 @@ function Workspace() {
     if (p) return startSync(p)
   }, [hydrated, who])
   useScanSync()
+  useReviewSync()
   useConnectionWatch()
 
   const redirect = isAdmin ? adminRedirect(route, !provinceOnly) : null
