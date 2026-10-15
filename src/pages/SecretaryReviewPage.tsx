@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import { IssueItem } from '../components/Issues'
+import { AllClearArt } from '../components/Illustrations'
 import { Box, Chip, PageHead } from '../components/ui'
 import type { Analysis } from '../domain/analyze'
 import { clean, fullName, plural } from '../domain/format'
@@ -26,7 +27,7 @@ function Cell({ m }: { m: Mark }) {
 }
 
 /**
- * The barangay secretary's last check before printing: each tanod across the Masterlist, Payroll,
+ * The barangay secretary's last check before printing: each tanod across the Payroll,
  * Barangay Certification and ID photocopy, with exactly what is wrong and where, and the documents.
  */
 export function SecretaryReviewPage({ A }: { A: Analysis }) {
@@ -96,8 +97,9 @@ export function SecretaryReviewPage({ A }: { A: Analysis }) {
     <section className="page-section">
       <PageHead
         title="Check before printing"
-        sub="Every tanod across the four documents you hand to the Liga Rep: the Masterlist, the Payroll, the signed Barangay Certification and the ID photocopy. Each problem says exactly what differs; Go to it opens the row."
+        sub="Every tanod across the documents you hand to the Liga Rep: the Payroll, the signed Barangay Certification and the ID photocopy. Each problem says exactly what differs; Go to it opens the row."
       />
+      {!errs && !checks && b.tanods.length > 0 && <div className="all-clear"><AllClearArt /></div>}
       <div className={`banner ${errs ? 'bad' : checks ? '' : 'ok'}`}>
         {errs
           ? `${plural(errs, 'problem')} must be fixed before printing${checks ? `, and ${plural(checks, 'thing')} to double-check` : ''}.`
@@ -106,9 +108,8 @@ export function SecretaryReviewPage({ A }: { A: Analysis }) {
             : 'Everything matches. The documents are ready to print.'}
       </div>
 
-      <Box title="The documents" tip="Print them on long bond paper. The Masterlist, Payroll and Certification all come from your tanod list, so they always name the same people.">
+      <Box title="The documents" tip="Print them on long bond paper. The Payroll and Certification both come from your tanod list, so they always name the same people. The Liga Rep prints the masterlist for the whole municipality.">
         <ul className="doc-links">
-          <li><a href={href({ page: 'templates', doc: 'masterlist', brgy: null })}>Masterlist (your barangay's copy)</a></li>
           <li><a href={href({ page: 'templates', doc: 'payroll', brgy: null })}>Payroll (your barangay's part)</a></li>
           <li><a href={href({ page: 'templates', doc: 'certification', brgy: b.name })}>Barangay Certification</a></li>
           <li><a href={href({ page: 'templates', doc: 'idcopy', brgy: null })}>ID photocopies for signing</a></li>
@@ -140,7 +141,7 @@ export function SecretaryReviewPage({ A }: { A: Analysis }) {
             <table className="doc-table">
               <thead>
                 <tr>
-                  <th>No.</th><th>Tanod</th><th>Masterlist &amp; Payroll</th><th>Certification</th><th>ID scan</th><th>ID signed</th><th>What to fix</th>
+                  <th>No.</th><th>Tanod</th><th>Payroll</th><th>Certification</th><th>ID scan</th><th>ID signed</th><th>What to fix</th>
                 </tr>
               </thead>
               <tbody>

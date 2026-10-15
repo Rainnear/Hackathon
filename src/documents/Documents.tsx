@@ -24,17 +24,14 @@ export interface DocProps {
   only?: string | null
   /** Empty lines to write by hand. The headers and signatories are still filled in. */
   blank?: boolean
-  /**
-   * A barangay's own copy (the secretary's): award numbers are left to the Liga Rep, and the masterlist
-   * is signed by the barangay. preparedBy is the secretary's name.
-   */
-  barangayCopy?: { preparedBy: string; captain?: string }
+  /** A barangay's own part of the payroll (the secretary's) while its award numbers aren't known yet: left blank. */
+  barangayCopy?: boolean
 }
 
 /** Lines on a blank form: the barangay's limit, or one page when no barangay is chosen. */
 const blankLines = (b: Barangay | undefined, onePage: number) => Array.from({ length: b ? b.limit : onePage }, (_, i) => i)
 
-export function Masterlist({ sub, A, draft, only = null, blank = false, barangayCopy }: DocProps) {
+export function Masterlist({ sub, A, draft, only = null, blank = false }: DocProps) {
   const brgys = only ? sub.brgys.filter((b) => b.name === only) : sub.brgys
   const rows: ({ t: Tanod; b: Barangay } | { line: number })[] = blank
     // With no barangay chosen, the provincial template's 139 lines (4 pages).
@@ -77,17 +74,10 @@ export function Masterlist({ sub, A, draft, only = null, blank = false, barangay
           )}
         </tbody>
       </table>
-      {barangayCopy ? (
-        <div className="sigrow">
-          <div><div className="nm">{barangayCopy.preparedBy}</div>PREPARED BY: BARANGAY SECRETARY</div>
-          <div><div className="nm">{barangayCopy.captain || ' '}</div>CERTIFIED CORRECT: PUNONG BARANGAY</div>
-        </div>
-      ) : (
-        <div className="sigrow">
-          <div><div className="nm">{sub.sig.liga}</div>LIGA PRESIDENT</div>
-          <div><div className="nm">{sub.sig.mlgoo}</div>MLGOO</div>
-        </div>
-      )}
+      <div className="sigrow">
+        <div><div className="nm">{sub.sig.liga}</div>LIGA PRESIDENT</div>
+        <div><div className="nm">{sub.sig.mlgoo}</div>MLGOO</div>
+      </div>
       <div className="pgno">Page {pi + 1} of {pages.length}</div>
     </div>
   ))
@@ -155,7 +145,7 @@ function paySheets(lines: PayLine[]): PayLine[][] {
 }
 
 export function Payroll({ sub, A, draft, only = null, blank = false, barangayCopy }: DocProps) {
-  // The barangay's copy leaves award numbers to the Liga Rep, who numbers the whole municipality.
+  // A barangay's copy whose place in the municipal numbering isn't known yet (offline) leaves them blank.
   const award = (t: Tanod) => (barangayCopy ? '' : A.awards[t.id])
   const brgys = only ? sub.brgys.filter((b) => b.name === only) : sub.brgys
   const lines: PayLine[] = blank

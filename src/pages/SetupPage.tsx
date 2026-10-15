@@ -197,7 +197,7 @@ export function SetupPage({ A }: { A: Analysis }) {
       )}
       <div className="grid2 even">
         <div className="col">
-          <Box title="Submission">
+          <Box title="Submission" tip="The municipality comes from your account. Changing the year opens that year's list; a year that has not been opened yet starts empty.">
             <div className="box-bd fields">
               <div className="field">
                 <label htmlFor="muniIn">Municipality</label>
@@ -242,7 +242,6 @@ export function SetupPage({ A }: { A: Analysis }) {
                 />
               </div>
             </div>
-            <p className="box-bd note pt0">The municipality comes from your account. Changing the year opens that year's list; a year that has not been opened yet starts empty.</p>
           </Box>
           <DeadlinesBox />
           <Box title="Masterlist signatories" tip="They sign every page of the masterlist.">

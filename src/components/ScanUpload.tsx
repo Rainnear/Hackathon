@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
+import QRCode from 'qrcode'
 
 import { plural } from '../domain/format'
 import type { Barangay, DocKey } from '../domain/types'
-import { createScan, photoUrl, scanErrorMessage, type ScanKind } from '../lib/scans'
+import { createScan, deleteScans, photoUrl, scanErrorMessage, type ScanKind } from '../lib/scans'
 import { useEditable } from '../state/access'
 import { useScans } from '../state/scans'
 import { useStore } from '../state/store'
 import { useSync } from '../state/sync'
 import { toast } from '../state/toast'
 import { Modal } from './Modal'
+import { PhotoTips } from './Illustrations'
+import { pairingLink } from '../lib/pairing'
 
 interface Photo {
   key: string
@@ -104,15 +107,12 @@ export function ScanUpload({ b, open, onClose, mode = 'id' }: { b: Barangay; ope
           </div>
         ) : (
           <>
-            {list ? (
-              <p>
-                Choose a photo of each page of the list, <b>typed or handwritten</b>. Take each page straight on, in good light, with the whole page in view. Every line becomes one tanod, and you check them all before anything is added.
-              </p>
-            ) : (
-              <p>
-                Choose the photos of the tanods' IDs. You can pick many at once. Take <b>the front, then the back</b> of each ID, so they stay together.
-              </p>
-            )}
+            <PhotoTips subject={list ? 'page' : 'id'} />
+            <p className="note">
+              {list
+                ? 'One photo per page, typed or handwritten. Each line becomes a tanod; you check them all before anything is added.'
+                : 'Pick many at once: the front, then the back of each ID, so they stay together.'}
+            </p>
             <label
               className={`drop ${dragging ? 'over' : ''}`}
               onDragOver={(e) => {
@@ -130,6 +130,9 @@ export function ScanUpload({ b, open, onClose, mode = 'id' }: { b: Barangay; ope
               <span className="btn primary big">Choose photos</span>
               <span className="note">On a phone you can take photos or pick them from the gallery. On a computer, you can also drag photos here.</span>
             </label>
+            {!list && !photos.length && remote && remote.brgyIds[b.name] && (
+              <PhonePair submissionId={remote.submissionId} barangayId={remote.brgyIds[b.name]} barangay={b.name} />
+            )}
             {photos.length > 0 && (
               <>
                 <label className="check-inline" hidden={list}>
@@ -179,6 +182,40 @@ export function ScanUpload({ b, open, onClose, mode = 'id' }: { b: Barangay; ope
   )
 }
 
+/**
+ * "Use your phone": a QR code the Sakto phone app scans to send IDs to this barangay. The phone signs in
+ * with its own account; each ID it sends appears here and opens the review pop-up by itself.
+ * (From the Hackathon repository's web app; shown open here so it's easy to find.)
+ */
+function PhonePair({ submissionId, barangayId, barangay }: { submissionId: number; barangayId: number; barangay: string }) {
+  const [qr, setQr] = useState<string | null>(null)
+  const link = pairingLink({ submissionId, barangayId, barangay })
+  useEffect(() => {
+    let live = true
+    QRCode.toDataURL(link, { errorCorrectionLevel: 'M', margin: 2, width: 440 }).then(
+      (url) => live && setQr(url),
+      () => live && setQr(''),
+    )
+    return () => {
+      live = false
+    }
+  }, [link])
+
+  return (
+    <section className="phone-pair" aria-label="Scan with the Sakto phone app">
+      <h3>Or scan with the Sakto phone app</h3>
+      <div className="phone-pair-bd">
+        {qr ? <img src={qr} alt={`Pairing code for Brgy. ${barangay}`} width={220} height={220} /> : <div className="qr-wait">{qr === '' ? 'The code could not be made.' : 'Making the code…'}</div>}
+        <ol>
+          <li>Open the Sakto app on the phone and sign in with the <b>same account</b> you use here.</li>
+          <li>Tap <b>Scan pairing code</b> and point the camera at this code.</li>
+          <li>Photograph each ID. They arrive here one by one and the review opens by itself, so keep Sakto open on this computer. You can close this window.</li>
+        </ol>
+      </div>
+    </section>
+  )
+}
+
 const DOC_KIND: Partial<Record<DocKey, ScanKind>> = { cert: 'certification', designation: 'designation', spa: 'spa' }
 
 /** "Attach photo" / "View photo" beside a document in the checklist. Attaching also ticks it as received. */
@@ -190,7 +227,9 @@ export function DocPhoto({ b, k }: { b: Barangay; k: DocKey }) {
   const editable = useEditable()
   const bid = remote?.brgyIds[b.name]
   const scan = useScans((s) => [...s.list].reverse().find((x) => x.kind === kind && x.barangay_id === bid && x.status === 'saved'))
+  const all = useScans((s) => s.list)
   const upsert = useScans((s) => s.upsert)
+  const drop = useScans((s) => s.remove)
   const [busy, setBusy] = useState(false)
   if (!kind || !remote || !bid) return null
 
@@ -202,6 +241,21 @@ export function DocPhoto({ b, k }: { b: Barangay; k: DocKey }) {
       upsert(s)
       setDoc(b.name, k, true)
       toast('Photo attached and marked as received.')
+    } catch (e) {
+      toast(scanErrorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  // Removes the photo (and any older ones it replaced), so a wrong or blurry photo isn't kept or read.
+  const removePhoto = async () => {
+    if (!window.confirm('Remove this photo? It is deleted for good. The document stays ticked as received; untick it if you no longer have it.')) return
+    const mine = all.filter((x) => x.kind === kind && x.barangay_id === bid)
+    setBusy(true)
+    try {
+      await deleteScans(mine)
+      mine.forEach((x) => drop(x.id))
+      toast('Photo removed.')
     } catch (e) {
       toast(scanErrorMessage(e))
     } finally {
@@ -222,9 +276,12 @@ export function DocPhoto({ b, k }: { b: Barangay; k: DocKey }) {
       {scan && <a href="#" role="button" className="linkbtn" onClick={(e) => { e.preventDefault(); void view() }}>View photo</a>}
       {editable && online && (
         <label className={`linkbtn ${busy ? 'busy' : ''}`}>
-          {busy ? 'Uploading…' : scan ? 'Replace photo' : 'Attach photo'}
+          {busy ? 'Working…' : scan ? 'Replace photo' : 'Attach photo'}
           <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => { void attach(e.target.files?.[0]); e.target.value = '' }} />
         </label>
+      )}
+      {scan && editable && online && (
+        <button type="button" className="linkbtn danger" disabled={busy} onClick={() => void removePhoto()}>Remove photo</button>
       )}
     </span>
   )

@@ -11,7 +11,6 @@ import { useSync } from '../state/sync'
 import { toast } from '../state/toast'
 import { ListReviewForm } from './ListReview'
 import { ScanPhoto } from './ScanPhoto'
-import { printIdFor } from '../state/goTo'
 import { Modal } from './Modal'
 
 const SURE = 0.8
@@ -55,15 +54,7 @@ function ReviewForm({ scan, position, total }: { scan: Scan; position: number; t
       await markScanSaved(scan.id, tanod.id, { ...f, ...(read ? { read } : {}), last: tanod.last, first: tanod.first, mi: tanod.mi, suffix: tanod.suffix })
       addTanods(b.name, [tanod])
       upsert({ ...scan, status: 'saved', tanod_id: tanod.id })
-      // The ID is here: offer to print it for the tanod's three signatures.
-      const brgy = b.name
-      toast(`${tanod.first} ${tanod.last} added to Brgy. ${brgy}.`, {
-        label: 'Print ID for signing',
-        run: () => {
-          useScans.getState().close()
-          printIdFor(brgy, tanod.id)
-        },
-      })
+      toast(`${tanod.first} ${tanod.last} added to Brgy. ${b.name}.`)
       next()
     } catch (e) {
       toast((e as Error).message)

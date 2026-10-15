@@ -1,5 +1,5 @@
 import type { Issue, Submission } from '../domain/types'
-import { navigate, type Route } from './route'
+import type { Route } from './route'
 
 /**
  * Where "Go to it" leads: the exact row when the issue is about a tanod (in the issue's own barangay
@@ -16,6 +16,3 @@ export function issueTarget(i: Issue, sub: Submission): Route {
   if (i.brgy) return { page: 'barangays', brgy: i.brgy }
   return i.kind === 'setup' ? { page: 'setup' } : { page: 'review' }
 }
-
-/** Open the ID photocopy page for one tanod, to print for their three signatures. */
-export const printIdFor = (brgy: string, tanodId: string) => navigate({ page: 'templates', doc: 'idcopy', brgy, tanod: tanodId })

@@ -79,7 +79,7 @@ export function BarangaySetupPage() {
               <dt>Tanod limit, Brgy. {b.name}</dt><dd>{b.limit}</dd>
               <dt>Your deadline</dt><dd>{day(sub.barangayDue)}</dd>
               <dt>Province's deadline</dt><dd>{day(sub.provinceDue)}</dd>
-              <dt>Liga President</dt><dd>{sub.sig.liga || '—'}</dd>
+              <dt>Liga Representative</dt><dd>{sub.sig.liga || '—'}</dd>
               <dt>MLGOO</dt><dd>{sub.sig.mlgoo || '—'}</dd>
             </dl>
           </Box>

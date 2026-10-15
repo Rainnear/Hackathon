@@ -12,8 +12,9 @@ import {
 } from '../lib/supabase'
 import { useAuth } from '../state/auth'
 import { ReportProblem } from './HelpPage'
+import { HallArt, WaitingArt } from '../components/Illustrations'
 
-function AuthCard({ title, sub, children, footer }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode }) {
+function AuthCard({ title, sub, children, footer, art }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode; art?: ReactNode }) {
   return (
     <div className="auth">
       <div className="auth-card">
@@ -24,6 +25,7 @@ function AuthCard({ title, sub, children, footer }: { title: string; sub?: React
             <span>Tanod incentive documents · Province of Iloilo</span>
           </div>
         </div>
+        {art}
         <h2>{title}</h2>
         {sub && <p className="sub">{sub}</p>}
         {children}
@@ -74,6 +76,7 @@ function SignIn({ go }: { go: (m: Mode) => void }) {
   }
   return (
     <AuthCard
+      art={<HallArt />}
       title="Sign in"
       sub="Barangay secretaries, the municipal Liga Rep and the provincial office sign in here."
       footer={<>New here? <button type="button" className="linkbtn" onClick={() => go('signup')}>Create an account</button></>}
@@ -176,6 +179,7 @@ function SignUp({ go }: { go: (m: Mode) => void }) {
 
   return (
     <AuthCard
+      art={<HallArt />}
       title="Create an account"
       sub="For barangay secretaries and Liga Reps. Each account is approved before it can see any tanods."
       footer={<>Already have an account? <button type="button" className="linkbtn" onClick={() => go('signin')}>Sign in</button></>}
@@ -366,6 +370,7 @@ export function Pending() {
   const [helping, setHelping] = useState(false)
   return (
     <AuthCard
+      art={<WaitingArt />}
       title="Waiting for approval"
       sub={
         <>

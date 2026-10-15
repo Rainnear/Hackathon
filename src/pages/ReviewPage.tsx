@@ -128,11 +128,20 @@ function StatusBox() {
       </Box>
     )
   return (
-    <Box title={`CY ${year} list`} aside={<Chip tone={status === 'open' ? 'warn' : 'ok'}>{status === 'open' ? 'Open for encoding' : status === 'submitted' ? 'Submitted' : 'Closed'}</Chip>}>
+    <Box
+      title={`CY ${year} list`}
+      aside={<Chip tone={status === 'open' ? 'warn' : 'ok'}>{status === 'open' ? 'Open for encoding' : status === 'submitted' ? 'Submitted' : 'Closed'}</Chip>}
+      tip={
+        status === 'open'
+          ? 'Barangay secretaries can still change their own lists. When everything checks out, lock it so nothing changes while you print and submit.'
+          : status === 'submitted'
+            ? 'Locked. Secretaries can view their lists but not change them. You can still fix mistakes here.'
+            : 'Closed. The lists can be viewed and printed, but nobody can change them.'
+      }
+    >
       <div className="box-bd stack">
         {status === 'open' && (
           <>
-            <p>Barangay secretaries can still change their own lists. When everything checks out, lock it so nothing changes while you print and submit.</p>
             <div className="row">
               <button type="button" className="btn primary" disabled={busy} onClick={() => change('submitted', `CY ${year} is locked. Secretaries can no longer change their lists.`)}>
                 Lock and mark as submitted
@@ -142,7 +151,6 @@ function StatusBox() {
         )}
         {status === 'submitted' && (
           <>
-            <p>Locked. Secretaries can view their lists but not change them. You can still fix mistakes here.</p>
             <div className="row">
               <button type="button" className="btn" disabled={busy} onClick={() => change('open', `CY ${year} is open again for secretaries.`)}>Reopen for secretaries</button>
               <button type="button" className="btn" disabled={busy}
@@ -154,7 +162,6 @@ function StatusBox() {
         )}
         {status === 'closed' && (
           <>
-            <p>Closed. The lists can be viewed and printed, but nobody can change them.</p>
             <div className="row">
               <button type="button" className="btn" disabled={busy}
                 onClick={() => change('submitted', `CY ${year} is reopened for corrections.`, `Reopen CY ${year} for corrections? Only you and administrators will be able to change it.`)}>

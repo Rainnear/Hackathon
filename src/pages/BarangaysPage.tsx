@@ -5,6 +5,7 @@ import { Box, Chip, CommitInput, NextStep } from '../components/ui'
 import { SmsActions } from '../components/Issues'
 import { issueTarget } from '../state/goTo'
 import { TanodDialog } from '../components/TanodDialog'
+import { EmptyListArt } from '../components/Illustrations'
 import type { Analysis } from '../domain/analyze'
 import { clean, cleanMI, fullName, plural } from '../domain/format'
 import { POSITIONS, SUFFIXES, type Barangay, type DocKey, type Issue, type Position, type RowNote, type Suffix, type Tanod } from '../domain/types'
@@ -115,7 +116,6 @@ function RosterRow({ t, award, notes, solo, brgy, onRemove }: { t: Tanod; award:
       <div className="c-note">
         {dirty && <span className="unsaved">Not saved yet: tap ✓ to save, or press Esc to undo.</span>}
         {hasId && <IdPhotosButton tanodId={t.id} />}
-        <a className="linkbtn" href={href({ page: 'templates', doc: 'idcopy', brgy, tanod: t.id })}>Print ID for signing</a>
         {(notes ?? []).map((n, i) => (
           <span key={i} className={n.level}>
             {n.text}
@@ -150,11 +150,12 @@ function Roster({ b, A, solo }: { b: Barangay; A: Analysis; solo: boolean }) {
       title="Tanods"
       tip={
         solo
-          ? 'Check each name against the ID. Change a name or M.I. right in the list, then tap ✓ to save. The Liga Rep assigns the award numbers when the whole municipality is put together.'
+          ? 'Check each name against the ID. Change a name or M.I. right in the list, then tap ✓ to save. Award numbers count on from the barangays listed before yours, so they show on your payroll.'
           : 'Change a name right in the list, then tap ✓ to save. Award numbers run across the whole municipality and update when rows are added or deleted.'
       }
       aside={
         <div className="row">
+          <button type="button" className="btn" onClick={() => setScanning('id')}>{NavIcon.camera} Scan IDs</button>
           <button type="button" className="btn" onClick={() => setScanning('list')}>{NavIcon.records} Scan a list</button>
           <button type="button" className="btn primary" onClick={() => setAdding(true)} disabled={full}>
             {full ? 'Limit reached' : 'Add tanod'}
@@ -175,10 +176,12 @@ function Roster({ b, A, solo }: { b: Barangay; A: Analysis; solo: boolean }) {
           undoable(t, reason === 'mistake' ? removeTanod(b.name, t.id) : removeWithReason(b.name, t.id, { name: fullName(t), reason, note }))
         }}
       />
-      <div className="rrow rhead edit" aria-hidden="true">
-        <span className="c-no">No.</span><span className="c-last">Last name</span><span className="c-first">First name</span><span className="c-mi">M.I.</span>
-        <span className="c-sfx">Suffix</span><span className="c-pos">Position</span><span className="c-ids">ID</span><span className="c-save" /><span className="c-del" />
-      </div>
+      {b.tanods.length > 0 && (
+        <div className="rrow rhead edit" aria-hidden="true">
+          <span className="c-no">No.</span><span className="c-last">Last name</span><span className="c-first">First name</span><span className="c-mi">M.I.</span>
+          <span className="c-sfx">Suffix</span><span className="c-pos">Position</span><span className="c-ids">ID</span><span className="c-save" /><span className="c-del" />
+        </div>
+      )}
       <div className="rows">
         {b.tanods.length ? (
           b.tanods.map((t, i) => (
@@ -187,7 +190,15 @@ function Roster({ b, A, solo }: { b: Barangay; A: Analysis; solo: boolean }) {
               solo={solo} brgy={b.name} onRemove={() => setLeaving(t)} />
           ))
         ) : (
-          <p className="empty">No tanods yet for Brgy. {b.name}. Use Add tanod to scan their IDs or type them in, or Scan a list.</p>
+          <div className="empty-art">
+            <EmptyListArt />
+            <b>No tanods yet for Brgy. {b.name}</b>
+            <div className="row">
+              <button type="button" className="btn primary" onClick={() => setScanning('id')}>{NavIcon.camera} Scan IDs</button>
+              <button type="button" className="btn" onClick={() => setAdding(true)}>Type them in</button>
+              <button type="button" className="btn" onClick={() => setScanning('list')}>{NavIcon.records} Scan a written list</button>
+            </div>
+          </div>
         )}
       </div>
     </Box>

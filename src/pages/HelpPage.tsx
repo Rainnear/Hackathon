@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { HowItWorks } from '../components/Illustrations'
 import { Box, Chip, PageHead } from '../components/ui'
 import { formatDateTime } from '../domain/format'
 import { fetchSupportRequests, sendSupportRequest, type SupportRequest } from '../lib/supabase'
@@ -141,7 +142,7 @@ const ANSWERS: { q: string; a: string }[] = [
   },
   {
     q: 'My tanods are gone, or I changed phones',
-    a: 'Tanod lists are saved on the device where they were typed. On the old device, open Setup and tap "Export backup", then "Restore from backup" on the new one. Export a backup every week so nothing is lost if a phone breaks.',
+    a: 'Your list is saved online as soon as the phone or computer has internet. Sign in on the new device and it downloads by itself. Anything typed with no signal uploads the next time that device is online, so open Sakto on the old device once with internet before you stop using it.',
   },
   {
     q: 'It says "A new version of Sakto is ready"',
@@ -166,6 +167,9 @@ export function HelpPage({ from }: { from: string | null }) {
   return (
     <section className="page-section">
       <PageHead title="Help" sub="Answers to common problems, and a way to tell the Sakto team when something isn't working." />
+      <Box title="How Sakto works">
+        <div className="box-bd"><HowItWorks /></div>
+      </Box>
       <div className="grid2 even">
         <div className="col">
           <Box title="Report a problem">

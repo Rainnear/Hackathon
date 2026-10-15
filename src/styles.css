@@ -138,6 +138,17 @@ main { padding-top: var(--s5) }
 .box { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0 }
 .box-hd { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line) }
 .box-hd .r { margin-left: auto }
+/* A box that folds away: caret before the title, a red/amber dot while folded if items are waiting. */
+.box-caret { width: 30px; height: 30px; min-height: 0; margin-left: calc(-1 * var(--s2)); padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer }
+.box-caret:hover { background: var(--sunk); color: var(--ink) }
+.box-caret .chev { width: 8px; height: 8px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-2px) rotate(45deg); transition: transform .15s }
+.box-caret[aria-expanded="false"] .chev { transform: translateX(-2px) rotate(-45deg) }
+.box.shut .box-hd { border-bottom: 0 }
+.box-alert { width: 10px; height: 10px; border-radius: 50%; flex: none; animation: box-alert 1.8s ease-in-out infinite }
+.box-alert.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft) }
+.box-alert.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft) }
+@keyframes box-alert { 50% { opacity: .45 } }
+@media (prefers-reduced-motion: reduce) { .box-alert { animation: none } .box-caret .chev { transition: none } }
 .box-bd { padding: var(--s4) }
 .box-sub { padding: var(--s2) var(--s4) 0 }
 .box-ft { padding: var(--s3) var(--s4) var(--s4); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--s2) }
@@ -388,6 +399,8 @@ tr.band .cont { font-weight: 400; font-style: italic }
 .auth-msg.ok { background: var(--ok-soft); color: var(--ok) }
 .btn.block { width: 100%; justify-content: center; padding-block: 10px; font-size: var(--t-md) }
 .linkbtn.center { align-self: center }
+.linkbtn.danger { color: var(--bad) }
+.linkbtn:disabled { opacity: .5; cursor: default }
 .pw { position: relative }
 .pw input { padding-right: 56px }
 .pw .linkbtn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: var(--t-xs) }
@@ -786,11 +799,10 @@ ul.others { list-style: none; margin: 0; padding: var(--s1) 0 }
 .tpl-paper i { display: block; height: 3px; border-radius: 2px; background: var(--line-strong) }
 .tpl-paper i:first-child { width: 60%; align-self: center; background: var(--muted) }
 .tpl-bd { padding: var(--s3) var(--s4); flex: 1 }
-.tpl-bd h3 { margin: 0 0 var(--s1); font-size: var(--t-md) }
-.tpl-bd p { margin: 0 0 var(--s3) }
-.tpl-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--s3); margin: 0; font-size: var(--t-sm) }
-.tpl-facts dt { color: var(--muted); font-weight: 600 }
-.tpl-facts dd { margin: 0 }
+.tpl-bd h3 { margin: 0 0 var(--s2); font-size: var(--t-md) }
+.tip-facts { display: block; margin-top: var(--s2) }
+.tip-facts > span { display: block }
+.tip-facts b { font-weight: 700 }
 .tpl-ft { padding: 0 var(--s4) var(--s4) }
 .page .blank { display: inline-block; border-bottom: 1px solid var(--paper-ink); height: 1em; vertical-align: baseline }
 .page .blank.w12 { width: 12em }
@@ -843,7 +855,7 @@ a.card-link { display: block; color: inherit; text-decoration: none; flex: 1; bo
 a.card-link:hover { background: var(--sunk) }
 .dash-grid > :nth-child(-n+2) > a.card-link { display: flex; flex-direction: column; justify-content: center }
 .kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)) }
-@media (max-width: 700px) { .kpis.three { grid-template-columns: minmax(0, 1fr) } }
+
 ul.checklist.links { padding: 0 }
 .checklist.links li { padding: 0; border-top: 1px solid var(--line) }
 .checklist.links li:first-child { border-top: 0 }
@@ -867,3 +879,184 @@ ul.checklist.links { padding: 0 }
 .side.collapsed .side-link { justify-content: center; padding-inline: 0; position: relative }
 .side.collapsed .side-link .badge { position: absolute; top: 2px; right: 0; font-size: 10px; padding: 0 5px; min-width: 0 }
 .side.collapsed .side-foot .btn { padding-inline: 0; justify-content: center }
+.checklist.links a { flex: 1; min-width: 0 }
+@media (max-width: 700px) {
+  .kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2) }
+  .kpis.three .kpi { padding: var(--s3) }
+  .kpis.three .kpi-l { font-size: var(--t-sm) }
+  .kpis.three .kpi-v { font-size: 22px }
+  .kpis.three .kpi-n, .kpis.three .kpi-go { display: none }
+}
+
+/* ---------- Tanod screen: the list in the middle, checks and requirements in a narrow panel ---------- */
+.tanod-screen { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--s5); align-items: start }
+.ts-main { display: flex; flex-direction: column; gap: var(--s4); min-width: 0 }
+.ts-side {
+  position: sticky; top: var(--s3); max-height: calc(100vh - 2 * var(--s3)); overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s3); min-width: 0; padding-bottom: var(--s2)
+}
+.side-stack { display: flex; flex-direction: column; gap: var(--s3) }
+.ts-side .box-hd { padding: var(--s2) var(--s3) }
+.ts-side .box-hd h3 { font-size: var(--t-md) }
+.ts-side .box-bd { padding: var(--s3) }
+.ts-side .fields { grid-template-columns: minmax(0, 1fr) }
+.pick-row { display: flex; align-items: center; gap: var(--s2) }
+.brgy-pick { flex: 1; min-width: 0; font-weight: 600 }
+ul.side-checks { list-style: none; margin: 0; padding: 0 }
+.side-checks li { display: flex; gap: var(--s2); padding: var(--s2) var(--s3); border-top: 1px solid var(--line); font-size: var(--t-sm) }
+.side-checks li:first-child { border-top: 0 }
+.side-checks .sev { flex: none; margin-top: 7px }
+.side-checks li.error .sev { background: var(--bad) }
+.side-checks .t { font-weight: 600; line-height: 1.35 }
+.side-checks .acts { display: flex; flex-wrap: wrap; gap: 2px var(--s3); font-size: var(--t-xs) }
+@media (max-width: 1100px) {
+  .tanod-screen { grid-template-columns: minmax(0, 1fr) }
+  .ts-side { position: static; max-height: none; overflow: visible }
+}
+
+/* ---------- Help as tooltips: an "i" beside a title ---------- */
+.tip { position: relative; display: inline-flex; vertical-align: middle; margin-left: var(--s2) }
+.tip-btn {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--muted);
+  font: italic 700 13px/1 Georgia, 'Times New Roman', serif; cursor: help; padding: 0; display: grid; place-items: center
+}
+.tip-btn:hover, .tip-btn:focus-visible { border-color: var(--accent); color: var(--accent) }
+.tip-body {
+  position: fixed; top: 0; left: 0; z-index: 1000; width: max-content; max-width: min(340px, calc(100vw - 16px));
+  padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--ink); color: var(--bg); box-shadow: var(--shadow);
+  font-size: var(--t-sm); font-weight: 500; line-height: 1.45; letter-spacing: 0; text-transform: none; white-space: normal; text-align: left;
+  visibility: hidden; opacity: 0; transition: opacity .12s, visibility .12s; pointer-events: none
+}
+.tip-body.on { visibility: visible; opacity: 1 }
+@media print { .tip { display: none } }
+.admin-acts { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center }
+.admin-acts select { width: auto; max-width: 100% }
+.acct-q { width: 260px; max-width: 100% }
+.su-as { display: grid; gap: var(--s2) }
+.su-as legend { margin-bottom: var(--s1) }
+.su-as .reason { align-items: flex-start }
+.su-as .reason input { margin-top: 3px }
+.su-as .reason span { display: flex; flex-direction: column; gap: 2px }
+.su-as .reason small { font-weight: 500; color: var(--muted); font-size: var(--t-sm) }
+
+/* ---------- ID photocopy for signing (paper) ---------- */
+.id-sides { display: flex; flex-direction: column; align-items: center; gap: .35in; margin-top: .3in }
+.id-side { margin: 0; text-align: center; font-size: 11px }
+.id-frame { width: 3.375in; height: 2.125in; border: 1px solid var(--paper-ink); display: grid; place-items: center; overflow: hidden }
+.id-frame img { width: 100%; height: 100%; object-fit: contain }
+.id-attach { color: #666; font-size: 12px; padding: 0 12px; border: 1.5px dashed #999; margin: 10px; align-self: stretch; justify-self: stretch; display: grid; place-items: center }
+.id-sigs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: .9in; font-size: 11px; text-align: center }
+.id-sigs .nm { border-bottom: 1px solid var(--paper-ink); min-height: 18px; font-weight: 700; text-transform: uppercase; padding-top: 34px }
+
+/* ---------- Tanod list, editable: ✓ saves a row, the trash can deletes it ---------- */
+.rrow.edit {
+  grid-template-columns: 34px minmax(0, 1.3fr) minmax(0, 1.3fr) 56px 76px minmax(130px, 1fr) 92px 40px 40px;
+  grid-template-areas: "no last first mi sfx pos ids save del" "no note note note note note note note note";
+  border-left: 4px solid transparent;
+}
+.rrow > .c-save { grid-area: save }
+.rrow.edit.err { background: var(--bad-soft); border-left-color: var(--bad) }
+.rrow.edit.warnf { background: var(--warn-soft); border-left-color: var(--warn) }
+.rrow.edit.dirty { box-shadow: inset 0 0 0 2px var(--accent) }
+.rrow.edit.focus { animation: row-flash 2.6s ease-out; outline: 3px solid var(--accent); outline-offset: -3px }
+.id-signed { display: flex; align-items: center; gap: 6px; font-size: var(--t-sm); font-weight: 600; cursor: pointer; white-space: nowrap }
+.id-signed input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent) }
+.iconbtn.save { color: var(--muted) }
+.iconbtn.save.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.iconbtn.save:disabled { opacity: .35; cursor: default }
+.iconbtn.del { color: var(--bad) }
+.rrow.edit .c-note { font-size: var(--t-sm) }
+.rrow.edit .c-note .unsaved { color: var(--accent); font-weight: 700 }
+.rrow.edit .c-note .warn, .rrow.edit .c-note .error { font-weight: 600 }
+/* Medium width (the list beside the side panel): two lines per tanod. */
+@container (max-width: 780px) {
+  .rrow.edit {
+    grid-template-columns: 26px minmax(0, 1.3fr) minmax(0, 1.3fr) 58px 76px 40px 40px;
+    grid-template-areas: "no last first mi sfx save del" "no pos pos ids ids ids ids" "no note note note note note note";
+    row-gap: 6px; padding-block: 8px;
+  }
+  .rrow.rhead.edit { display: grid; grid-template-areas: "no last first mi sfx save del"; padding-block: var(--s2) }
+  .rrow.rhead.edit > .c-pos, .rrow.rhead.edit > .c-ids { display: none }
+  .rrow.edit .c-note { margin-top: 0 }
+}
+/* Phones: names on their own line. */
+@container (max-width: 480px) {
+  .rrow.edit {
+    grid-template-columns: 26px repeat(4, minmax(0, 1fr)) 40px 40px;
+    grid-template-areas: "no last last first first first first" "no mi sfx save del . ." "no pos pos pos ids ids ids" "no note note note note note note";
+  }
+  .rrow.rhead.edit { display: none }
+}
+
+/* ---------- Secretary: Barangay details, and Check before printing ---------- */
+dl.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s2) var(--s4); margin: 0; font-size: var(--t-sm) }
+dl.facts dt { color: var(--muted) }
+dl.facts dd { margin: 0; font-weight: 600 }
+ul.doc-links { list-style: none; margin: 0; padding: var(--s3) var(--s4); display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2) }
+.doc-links a { display: block; padding: var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); font-weight: 600; color: var(--accent); text-decoration: none }
+.doc-links a:hover { background: var(--accent-soft) }
+.doc-table-wrap { overflow-x: auto }
+table.doc-table { width: 100%; border-collapse: collapse; font-size: var(--t-sm) }
+.doc-table th { text-align: left; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); white-space: nowrap }
+.doc-table td { padding: var(--s2) var(--s3); border-top: 1px solid var(--line); vertical-align: top }
+.doc-table tr.err td:first-child { box-shadow: inset 4px 0 var(--bad) }
+.doc-table tr.warnf td:first-child { box-shadow: inset 4px 0 var(--warn) }
+.doc-table td.dc { white-space: nowrap; font-weight: 600 }
+.dc-mark { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 800 }
+.dc.ok .dc-mark { background: var(--ok-soft); color: var(--ok) }
+.dc.warn .dc-mark { background: var(--warn-soft); color: var(--warn) }
+.dc.bad .dc-mark { background: var(--bad-soft); color: var(--bad) }
+.dc.idle { color: var(--muted); font-weight: 500 }
+.dc.idle .dc-mark { background: var(--sunk); color: var(--muted) }
+.doc-table td.fix { min-width: 240px }
+.doc-table td.fix ul { margin: 0 0 4px; padding-left: 16px }
+.doc-table td.fix li.error { color: var(--bad) }
+.doc-table td.fix li.warn { color: var(--warn) }
+
+/* ---------- Illustrations: inline drawings in the app's own colours (light and dark) ---------- */
+.il { display: block; max-width: 100%; height: auto }
+.il .il-p { fill: var(--surface) }
+.il .il-s { fill: var(--accent-soft) }
+.il .il-a { fill: var(--accent) }
+.il .il-w { fill: var(--warn-soft) }
+.il .il-g { fill: var(--line) }
+.il .il-ok { fill: var(--ok) }
+.il .il-skin { fill: #E9B98F }
+.il .il-ink-f { fill: var(--ink) }
+.il .il-ln { stroke: var(--line-strong); stroke-width: 2; stroke-linejoin: round }
+.il .il-ln:not([class*="il-p"]):not([class*="il-s"]) { fill: none }
+.il line.il-ln, .il .il-ln-thin { stroke: var(--line-strong); stroke-width: 1.2; fill: none }
+.il .il-ln-dash { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 3 3; fill: none }
+.il .il-ink { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; fill: none }
+.il .il-a-ln { stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none }
+.il .il-s.il-a-ln { fill: var(--accent-soft) }
+.il .il-onA { stroke: var(--accent-ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none }
+.il-hero { width: 100%; max-width: 300px; margin: 0 auto var(--s2) }
+.il-spot { width: 180px; margin: 0 auto }
+.il-thumb { height: 100px; width: auto }
+
+ul.photo-tips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2) }
+.photo-tips li { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: var(--s2); background: var(--sunk); border-radius: var(--r-sm); text-align: center; font-size: var(--t-sm); font-weight: 600 }
+.photo-tips .il { width: 100%; max-width: 120px }
+
+ol.how { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s3); counter-reset: none }
+.how li { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: var(--s3) var(--s2); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r) }
+.how .il { width: 88px; margin-bottom: var(--s1) }
+.how b { font-size: var(--t-md) }
+.how span { font-size: var(--t-sm); color: var(--muted) }
+.how.compact li { padding: var(--s2) }
+.how.compact .il { width: 64px }
+@media (max-width: 700px) { ol.how { grid-template-columns: repeat(2, minmax(0, 1fr)) } }
+
+.empty-art { display: flex; flex-direction: column; align-items: center; gap: var(--s3); padding: var(--s5) var(--s4); text-align: center }
+.empty-art .row { justify-content: center }
+.tpl-thumb { display: flex; justify-content: center; align-items: flex-end; height: 112px; padding-top: var(--s3) }
+.il .il-cap { fill: #22302A }
+
+/* ---------- Pairing the Sakto phone app (QR code), from the Hackathon repository ---------- */
+.phone-pair { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface) }
+.phone-pair > h3 { margin: 0; padding: var(--s3) var(--s3) var(--s2); font-size: var(--t-md); color: var(--accent) }
+.phone-pair-bd { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s4); align-items: center; padding: 0 var(--s3) var(--s3) }
+.phone-pair-bd img, .phone-pair-bd .qr-wait { width: 220px; height: 220px; max-width: 100%; background: #fff; border-radius: var(--r); flex: none }
+.phone-pair-bd .qr-wait { display: grid; place-items: center; color: #5C6A63; font-size: var(--t-sm); border: 1px dashed var(--line-strong) }
+.phone-pair-bd ol { flex: 1 1 260px; margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--s2) }

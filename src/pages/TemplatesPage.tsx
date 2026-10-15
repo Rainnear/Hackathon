@@ -1,14 +1,16 @@
 import { useState } from 'react'
 
 import { SignatoryField } from '../components/SignatoryField'
-import { Box, CommitInput, PageHead } from '../components/ui'
+import { Box, CommitInput, InfoTip, PageHead } from '../components/ui'
 import { BarangayCertification, type CertOptions } from '../documents/Certification'
 import { CoverSheet, Masterlist, Payroll } from '../documents/Documents'
 import { scopeToBarangay, type Analysis } from '../domain/analyze'
 import { clean, fullName, plural } from '../domain/format'
 import type { Barangay, TemplateId } from '../domain/types'
 import { IdCopy } from '../documents/IdCopy'
+import { DocThumb } from '../components/Illustrations'
 import { useAuth } from '../state/auth'
+import { useAwardStart } from '../state/awardStart'
 import { useScans } from '../state/scans'
 import { certDatesFor, legacyCaptain, setCertDates, useCertSaved, type CertDates } from '../state/certOptions'
 import { useEditable } from '../state/access'
@@ -42,7 +44,7 @@ const TEMPLATES: Template[] = [
     id: 'masterlist', title: 'Masterlist of Barangay Tanods',
     what: 'Every tanod in the municipality with their award number and address. It goes with the payroll and uses the same award numbers.',
     signs: 'Liga President and MLGOO, on every page', fills: 'Award numbers, names, addresses, year, signatories',
-    paper: 'portrait', blank: true, perBrgy: true, secretary: true,
+    paper: 'portrait', blank: true, perBrgy: true, secretary: false,
   },
   {
     id: 'payroll', title: 'Provincial Payroll',
@@ -99,15 +101,19 @@ function Gallery({ list }: { list: Template[] }) {
       <div className="tpl-grid">
         {list.map((t) => (
           <article className="box tpl-card" key={t.id}>
-            <div className={`tpl-paper ${t.paper}`} aria-hidden="true"><i /><i /><i /><i /><i /></div>
+            <div className="tpl-thumb"><DocThumb id={t.id} /></div>
             <div className="tpl-bd">
-              <h3>{t.title}</h3>
-              <p>{t.what}</p>
-              <dl className="tpl-facts">
-                <dt>Signed by</dt><dd>{t.signs}</dd>
-                <dt>Filled in</dt><dd>{t.fills}</dd>
-                <dt>Paper</dt><dd>Long bond, {t.paper}{t.blank ? ' · can print blank' : ''}</dd>
-              </dl>
+              <h3>
+                {t.title}
+                <InfoTip label={`About the ${t.title}`}>
+                  {t.what}
+                  <span className="tip-facts">
+                    <span><b>Signed by:</b> {t.signs}</span>
+                    <span><b>Filled in:</b> {t.fills}</span>
+                    <span><b>Paper:</b> Long bond, {t.paper}{t.blank ? ' · can print blank' : ''}</span>
+                  </span>
+                </InfoTip>
+              </h3>
             </div>
             <div className="tpl-ft">
               <a className="btn primary block" href={href({ page: 'templates', doc: t.id, brgy: null })}>
@@ -124,7 +130,6 @@ function Gallery({ list }: { list: Template[] }) {
 function TemplateView({ t, A, brgy, tanod, solo }: { t: Template; A: Analysis; brgy: string | null; tanod: string | null; solo: boolean }) {
   const sub = useStore((s) => s.sub)
   const scans = useScans((s) => s.list)
-  const profileName = useAuth((s) => s.profile?.full_name)
   const [blank, setBlank] = useState(false)
   const saved = useCertSaved()
   const setOfficial = useStore((s) => s.setOfficial)
@@ -139,7 +144,7 @@ function TemplateView({ t, A, brgy, tanod, solo }: { t: Template; A: Analysis; b
   const errs = solo || !only ? A.errs : scopeToBarangay(A, only).errs
   const isId = t.id === 'idcopy'
   const draft = !blank && t.id !== 'certification' && !isId && errs > 0
-  // ID pages: one tanod (from "Print ID for signing"), or everyone in the barangay(s) shown.
+  // ID pages: one tanod (when the link names one), or everyone in the barangay(s) shown.
   const idPeople = (b ? [b] : listed).flatMap((x) => x.tanods.filter((p) => !tanod || p.id === tanod).map((p) => ({ b: x, t: p })))
   const idScan = (id: string) => scans.find((x) => x.tanod_id === id && x.status === 'saved')
 
@@ -154,8 +159,11 @@ function TemplateView({ t, A, brgy, tanod, solo }: { t: Template; A: Analysis; b
   })
   const certs: (Barangay | null)[] = blank ? [b ?? null] : b ? [b] : listed
 
-  // A secretary's copy: their barangay only, award numbers left to the Liga Rep, signed in the barangay.
-  const props = { sub, A, draft, only, blank, barangayCopy: solo ? { preparedBy: (b?.officials.secretary || profileName || '').toUpperCase(), captain: captainOf(b).toUpperCase() } : undefined }
+  // A secretary's payroll: their barangay only, numbered on from the barangays before it in the
+  // municipality. Offline, before that count is known, the award numbers are left blank.
+  const start = useAwardStart(solo && t.id === 'payroll')
+  const docA = solo && start !== null ? { ...A, awards: Object.fromEntries(Object.entries(A.awards).map(([id, n]) => [id, n + start])) } : A
+  const props = { sub, A: docA, draft, only, blank, barangayCopy: solo && start === null }
   const pages = isCert ? (blank ? 1 : certs.length) : 0
 
   return (
@@ -178,7 +186,7 @@ function TemplateView({ t, A, brgy, tanod, solo }: { t: Template; A: Analysis; b
           className="no-print"
           tip={
             <>
-              {fillNote(t.id, blank, b?.name ?? null, b?.limit ?? 0, solo)}
+              {fillNote(t.id, blank, b?.name ?? null, b?.limit ?? 0, solo, start !== null)}
               {(t.id === 'masterlist' || t.id === 'payroll') && !solo && (
                 <>
                   {' '}
@@ -300,9 +308,9 @@ function TemplateView({ t, A, brgy, tanod, solo }: { t: Template; A: Analysis; b
           {t.id === 'payroll' && <Payroll {...props} />}
           {t.id === 'cover' && <CoverSheet {...props} />}
           {isId &&
-            idPeople.map(({ b: x, t: p }) => {
+            idPeople.map(({ t: p }) => {
               const sc = idScan(p.id)
-              return <IdCopy key={p.id} municipality={sub.municipality} year={sub.year} b={x} t={p} front={sc?.front_path ?? null} back={sc?.back_path ?? null} />
+              return <IdCopy key={p.id} t={p} front={sc?.front_path ?? null} back={sc?.back_path ?? null} />
             })}
           {isCert && certs.map((x) => <BarangayCertification key={x?.name ?? 'blank'} municipality={sub.municipality} b={x} o={certOpts(x)} blank={blank} />)}
         </div>
@@ -312,15 +320,15 @@ function TemplateView({ t, A, brgy, tanod, solo }: { t: Template; A: Analysis; b
 }
 
 /** One line under the options saying what will be filled in and what is left blank. */
-function fillNote(id: TemplateId, blank: boolean, brgy: string | null, limit: number, solo = false) {
+function fillNote(id: TemplateId, blank: boolean, brgy: string | null, limit: number, solo = false, numbered = false) {
   const lines = brgy ? `${plural(limit, 'line')} (the limit for Brgy. ${brgy})` : null
   if (id === 'idcopy')
     return 'One page per tanod. A scanned ID prints on the page; without one, the boxes are left to attach the photocopy. The tanod signs on all three lines.'
   if (id === 'cover') return 'Filled in from the whole municipality: counts per barangay, total and check code.'
-  if (solo && !blank && id === 'masterlist')
-    return `Your barangay's copy: check every name against the IDs, then have it signed by the Punong Barangay. The Liga Rep's masterlist uses the municipal award numbers.`
   if (solo && !blank && id === 'payroll')
-    return `Your barangay's part of the payroll, to check every name and position. The Liga Rep prints the official payroll with the award numbers.`
+    return numbered
+      ? `Your barangay's part of the payroll. The award numbers count on from the barangays listed before yours, so they move if those lists change; the Liga Rep's printed payroll is the final one.`
+      : `Your barangay's part of the payroll. The award numbers fill in once Sakto is online; the Liga Rep's printed payroll is the final one.`
   if (!blank) {
     if (id === 'certification') return brgy ? `Filled in with the tanods of Brgy. ${brgy}.` : 'One certification for each barangay that has tanods.'
     return brgy

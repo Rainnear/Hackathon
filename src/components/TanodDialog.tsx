@@ -3,7 +3,6 @@ import { useState, type FormEvent } from 'react'
 import { clean, cleanMI, fullName, nameKey, plural } from '../domain/format'
 import { blankTanod } from '../domain/submission'
 import { POSITIONS, SUFFIXES, type Barangay, type Position, type Suffix, type Tanod } from '../domain/types'
-import { printIdFor } from '../state/goTo'
 import { useStore } from '../state/store'
 import { toast } from '../state/toast'
 import { Modal } from './Modal'
@@ -74,17 +73,13 @@ export function TanodDialog({ b, onClose, onScan }: { b: Barangay; onClose: () =
       <Modal open onClose={onClose} title={`${fullName(added)} added`}>
         <div className="modal-bd stack">
           <p>
-            <b>{fullName(added)}</b> is on the list of Brgy. {b.name}. Print their ID photocopy now, for them to sign three times? It opens the
-            ID page, ready to print. Without a scanned ID it has boxes to attach the photocopy.
+            <b>{fullName(added)}</b> is on the list of Brgy. {b.name}.
           </p>
         </div>
         <div className="modal-ft">
           <span className="grow" />
-          <button type="button" className="btn" onClick={onClose}>Done</button>
           <button type="button" className="btn" onClick={another} disabled={b.tanods.length >= b.limit}>Add another</button>
-          <button type="button" className="btn primary big" onClick={() => { onClose(); printIdFor(b.name, added.id) }}>
-            {NavIcon.print} Print ID for signing
-          </button>
+          <button type="button" className="btn primary" onClick={onClose}>Done</button>
         </div>
       </Modal>
     )

@@ -13,6 +13,7 @@ import { href, navigate, type Route } from '../state/route'
 import { useStore } from '../state/store'
 import { ProvinceView } from './ProvinceView'
 import { issueTarget } from '../state/goTo'
+import { HowItWorks } from '../components/Illustrations'
 import { ScansWaiting } from '../components/ScanReview'
 import { useEditable } from '../state/access'
 import { toast } from '../state/toast'
@@ -182,7 +183,13 @@ function Attention({ A }: { A: Analysis }) {
   // A secretary sees every item for their barangay; the full list is the Liga Rep's Review page.
   const shown = isSecretary ? list : list.slice(0, 5)
   return (
-    <Box title="Needs your attention" aside={list.length > 0 && <Chip tone={A.errs ? 'bad' : 'warn'}>{plural(list.length, 'item')}</Chip>} className="dash-card">
+    <Box
+      title="Needs your attention"
+      aside={list.length > 0 && <Chip tone={A.errs ? 'bad' : 'warn'}>{plural(list.length, 'item')}</Chip>}
+      className="dash-card"
+      collapsible={isSecretary ? 'attention' : undefined}
+      alert={A.errs ? 'bad' : list.length ? 'warn' : null}
+    >
       {shown.length ? (
         <>
           <ul className="todo">
@@ -310,7 +317,6 @@ function Checklist({ b, A }: { b: Barangay; A: Analysis }) {
   const items: { ok: boolean; label: string; hint: string; to: Route }[] = [
     { ok: n > 0 && n <= b.limit, label: 'Tanods listed', hint: n > b.limit ? `${n - b.limit} over the limit of ${b.limit}. Remove some.` : n ? `${n} of up to ${b.limit}` : `None yet. Up to ${b.limit} allowed.`, to: list },
     { ok: n > 0 && signed === n, label: 'ID photocopies with 3 signatures', hint: n ? `${signed} of ${n} complete` : 'Add tanods first', to: list },
-    { ok: namesOK, label: 'Masterlist', hint: namesHint, to: { page: 'templates', doc: 'masterlist', brgy: null } },
     { ok: namesOK, label: 'Payroll', hint: namesHint, to: { page: 'templates', doc: 'payroll', brgy: null } },
     { ok: b.docs.cert, label: 'Barangay Certification', hint: b.docs.cert ? 'Received' : 'Print it filled in, for the Punong Barangay to sign', to: { page: 'templates', doc: 'certification', brgy: b.name } },
     { ok: b.docs.designation, label: 'Proof of designation', hint: b.docs.designation ? 'Received' : 'Of the authorized representative', to: list },
@@ -325,7 +331,13 @@ function Checklist({ b, A }: { b: Barangay; A: Analysis }) {
   ]
   const done = items.filter((i) => i.ok).length
   return (
-    <Box title="What your barangay needs" aside={<Chip tone={done === items.length ? 'ok' : 'warn'}>{done} of {items.length} done</Chip>} className="dash-card">
+    <Box
+      title="What your barangay needs"
+      aside={<Chip tone={done === items.length ? 'ok' : 'warn'}>{done} of {items.length} done</Chip>}
+      className="dash-card"
+      collapsible="barangay-needs"
+      alert={done < items.length ? 'warn' : null}
+    >
       <ul className="checklist links">
         {items.map((i) => (
           <li key={i.label}>
@@ -397,6 +409,7 @@ function SecretaryHome({ A }: { A: Analysis }) {
           to={first ? issueTarget(first, sub) : list}
         />
       </div>
+      {!n && <HowItWorks compact />}
       <div className="dash-grid sec">
         <Checklist b={b} A={A} />
         {toCheck > 0 && <Attention A={A} />}
