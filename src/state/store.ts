@@ -1,18 +1,13 @@
-import { del, get, set } from 'idb-keyval'
 import { useSyncExternalStore } from 'react'
 import { create } from 'zustand'
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
 
+import { vaultStorage } from '../lib/vault'
 import { findMunicipality } from '../data/municipalities'
 import { newSubmission, normalizeSubmission } from '../domain/submission'
 import type { Barangay, Departure, DocKey, Filter, Focal, ObrKey, Officials, SignatoryKey, Submission, Tanod } from '../domain/types'
 
-// IndexedDB keeps the data on this device and survives restarts; localStorage is smaller and cleared more readily.
-const idbStorage: StateStorage = {
-  getItem: async (name) => (await get<string>(name)) ?? null,
-  setItem: (name, value) => set(name, value),
-  removeItem: (name) => del(name),
-}
+// IndexedDB keeps the data on this device and survives restarts. It is encrypted (lib/vault.ts) so DevTools shows only unreadable text.
 
 export type SubmissionStatus = 'open' | 'submitted' | 'closed'
 
@@ -266,7 +261,7 @@ export const useStore = create<SaktoState>()(
     {
       name: 'sakto',
       version: 1,
-      storage: createJSONStorage(() => idbStorage),
+      storage: createJSONStorage(() => vaultStorage),
       partialize: (s) => ({ sub: s.sub, filter: s.filter, lastBrgy: s.lastBrgy, lastBackupAt: s.lastBackupAt, remote: s.remote, pending: s.pending, previous: s.previous }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<SaktoState>
@@ -282,6 +277,12 @@ export const useStore = create<SaktoState>()(
     },
   ),
 )
+
+/** Empties this device's copy, in memory and on disk (used on sign-out). */
+export async function resetLocalStore() {
+  useStore.setState(useStore.getInitialState(), true)
+  await useStore.persist.clearStorage()
+}
 
 const subscribeHydration = (cb: () => void) => useStore.persist.onFinishHydration(cb)
 const getHydrated = () => useStore.persist.hasHydrated()

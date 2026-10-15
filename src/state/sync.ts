@@ -4,13 +4,13 @@
 // `pending`. Uploads send what is pending; downloads bring in everyone else's changes but keep
 // anything still pending here, so nothing typed offline is overwritten. Last upload wins when two
 // people change the same row. Uploads and downloads run one at a time, never interleaved.
-import { del, set as idbSet } from 'idb-keyval'
 import { create } from 'zustand'
 
 import { MIN_AMOUNT, PROVINCIAL_SIGNATORIES } from '../data/municipalities'
 import { clean, cleanMI, fullName } from '../domain/format'
 import { POSITIONS, SUFFIXES, type Barangay, type DepartureReason, type Position, type Signatories, type Submission, type Suffix, type Tanod } from '../domain/types'
 import { fetchAllPages, supabase, type Profile } from '../lib/supabase'
+import { vaultDel, vaultSet } from '../lib/vault'
 import { emptyPending, pendingCount, useStore, waitingCount, type Pending, type Previous, type SubmissionStatus } from './store'
 
 export const PRESYNC_KEY = 'sakto-presync'
@@ -470,7 +470,7 @@ async function open(profile: Profile, year?: number) {
   const same = r && r.userId === profile.id && r.municipalityId === profile.municipality_id && r.barangayId === brgyId && (year === undefined || r.year === year)
   if (!same) {
     const n = st.sub.brgys.reduce((a, b) => a + b.tanods.length, 0)
-    if (!r && n) await idbSet(PRESYNC_KEY, JSON.stringify(st.sub)).catch(() => {})
+    if (!r && n) await vaultSet(PRESYNC_KEY, JSON.stringify(st.sub)).catch(() => {})
     useStore.setState({ remote: null, pending: emptyPending(), lastBrgy: null, filter: 'all' })
     useSync.setState({ phase: 'loading', error: null })
   } else useSync.setState({ phase: 'ready' })
@@ -532,4 +532,4 @@ export async function discardPending() {
 }
 
 /** After uploading the old device copy, forget it. */
-export const forgetPresync = () => del(PRESYNC_KEY).catch(() => {})
+export const forgetPresync = () => vaultDel(PRESYNC_KEY).catch(() => {})

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { get } from 'idb-keyval'
+import { vaultGet } from '../lib/vault'
 
 import { Box, CommitInput, NextStep, PageHead } from '../components/ui'
 import { IssueItem } from '../components/Issues'
@@ -48,7 +48,7 @@ function DataBox() {
 
   // Tanods typed on this device before Sakto saved online, kept aside on the first download.
   useEffect(() => {
-    get<string>(PRESYNC_KEY).then(
+    vaultGet(PRESYNC_KEY).then(
       (raw) => {
         const s = raw ? normalizeSubmission(JSON.parse(raw)) : null
         setPresync(s && s.municipality === sub.municipality && count(s) ? s : null)

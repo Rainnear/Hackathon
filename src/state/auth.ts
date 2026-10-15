@@ -1,8 +1,12 @@
 import type { Session } from '@supabase/supabase-js'
 import { create } from 'zustand'
 
+import { destroyDeviceKey, vaultDel } from '../lib/vault'
 import { fetchProfile, supabase, supabaseConfigured, type Profile } from '../lib/supabase'
 import { leaveMunicipality } from './adminView'
+import { useScans } from './scans'
+import { PRESYNC_KEY } from './sync'
+import { resetLocalStore } from './store'
 
 type Status = 'loading' | 'signedOut' | 'signedIn' | 'recovery'
 
@@ -41,6 +45,22 @@ const writeCache = (p: Profile | null) => {
   }
 }
 
+/** Everything Sakto keeps on this device for the person who just signed out, so the next person finds nothing. */
+async function wipeLocalData() {
+  writeCache(null)
+  leaveMunicipality()
+  for (const k of ['sakto-help-draft', 'sakto-certification']) {
+    try {
+      localStorage.removeItem(k)
+    } catch {
+      /* storage blocked: nothing was kept */
+    }
+  }
+  useScans.setState({ list: [], queue: null, index: 0 })
+  await Promise.allSettled([resetLocalStore(), vaultDel(PRESYNC_KEY)])
+  await destroyDeviceKey().catch(() => {})
+}
+
 export const useAuth = create<AuthState>()((set, get) => ({
   status: supabaseConfigured ? 'loading' : 'signedOut',
   session: null,
@@ -65,8 +85,7 @@ export const useAuth = create<AuthState>()((set, get) => ({
   signOut: async () => {
     // Local scope signs out on this device even without internet.
     await supabase.auth.signOut({ scope: 'local' })
-    writeCache(null)
-    leaveMunicipality()
+    await wipeLocalData()
     set({ status: 'signedOut', session: null, profile: null, profileLoaded: false, passwordChanged: false })
   },
 

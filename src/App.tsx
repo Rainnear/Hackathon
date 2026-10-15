@@ -26,6 +26,8 @@ import { useHydrated, useStore } from './state/store'
 import { useScanSync, useScans } from './state/scans'
 import { buildReferences } from './state/references'
 import { startSync, useSync } from './state/sync'
+import { useConnectionWatch } from './state/connection'
+import { ConnectionBanner } from './components/ConnectionBanner'
 
 /** Decides between the sign-in screens and the app. */
 export default function App() {
@@ -104,6 +106,7 @@ function Workspace() {
     if (p) return startSync(p)
   }, [hydrated, who])
   useScanSync()
+  useConnectionWatch()
 
   const redirect = isAdmin ? adminRedirect(route, !provinceOnly) : null
   const redirectTo = redirect ? href(redirect) : null
@@ -133,6 +136,7 @@ function Workspace() {
       <div className="app-main">
         {!provinceOnly && <DeadlineBanner A={A} />}
         <TopBar route={route} A={A} />
+        <ConnectionBanner />
         {!provinceOnly && <SyncBanners />}
         <main>
           {page === 'dashboard' && <DashboardPage A={A} view={provinceOnly ? 'province' : route.page === 'dashboard' ? route.view : undefined} />}

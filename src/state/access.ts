@@ -1,5 +1,6 @@
 import { useAuth } from './auth'
 import { useStore, waitingCount } from './store'
+import { syncNow, useSync } from './sync'
 
 /** Whether the signed-in person may change the list right now. */
 export function useEditable() {
@@ -15,8 +16,11 @@ export function useEditable() {
 export function useSafeSignOut() {
   const signOut = useAuth((s) => s.signOut)
   const n = useStore(waitingCount)
-  return () => {
-    if (n && !window.confirm(`${n} ${n === 1 ? 'change has' : 'changes have'} not been uploaded yet. If you sign out now, ${n === 1 ? 'it' : 'they'} will be lost. Sign out anyway?`)) return
+  return async () => {
+    // Online: send what is waiting first, so signing out loses nothing.
+    if (n && useSync.getState().online) await syncNow().catch(() => {})
+    const left = waitingCount(useStore.getState())
+    if (left && !window.confirm(`${left} ${left === 1 ? 'change has' : 'changes have'} not been uploaded yet. If you sign out now, ${left === 1 ? 'it' : 'they'} will be erased from this device. Sign out anyway?`)) return
     void signOut()
   }
 }
