@@ -130,7 +130,7 @@ export function Box({ title, aside, tip, children, className = '', id, collapsib
           {aside && <div className="r">{aside}</div>}
         </div>
       )}
-      {collapsible ? <div id={bodyId} hidden={shut}>{children}</div> : children}
+      {collapsible ? <div id={bodyId} className="box-fold" hidden={shut}>{children}</div> : children}
     </section>
   )
 }

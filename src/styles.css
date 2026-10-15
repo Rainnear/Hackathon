@@ -487,6 +487,10 @@ code { font-family: var(--f-mono); font-size: .92em; background: var(--sunk); pa
 .dash-grid > :nth-child(1), .dash-grid > :nth-child(2), .dash-grid > :nth-child(3) { grid-column: span 4; align-self: stretch }
 .dash-grid > :nth-child(-n+3) { display: flex; flex-direction: column }
 .dash-grid > :nth-child(-n+2) > .box-bd { flex: 1; justify-content: center }
+/* A foldable card's body sits in .box-fold: it fills the card the same way. Folded, the card is just its header. */
+.box-fold:not([hidden]) { display: flex; flex-direction: column; flex: 1 }
+.dash-grid > .box.shut { align-self: start }
+.box.shut .box-hd .seg { display: none }
 .dash-grid > :nth-child(4) { grid-column: span 4 }
 .dash-grid > :nth-child(5) { grid-column: span 8 }
 .dash-card { box-shadow: var(--shadow) }
@@ -902,7 +906,9 @@ a.kpi.link:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--acce
 a.kpi.link:hover .kpi-go { color: var(--accent) }
 a.card-link { display: block; color: inherit; text-decoration: none; flex: 1; border-radius: 0 0 var(--r) var(--r) }
 a.card-link:hover { background: var(--sunk) }
-.dash-grid > :nth-child(-n+2) > a.card-link { display: flex; flex-direction: column; justify-content: center }
+.dash-grid > :nth-child(-n+2) > a.card-link,
+.dash-grid > :nth-child(-n+2) > .box-fold > a.card-link,
+.dash-grid > :nth-child(2) > .box-fold > .box-bd { display: flex; flex-direction: column; justify-content: center; flex: 1 }
 .kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)) }
 
 ul.checklist.links { padding: 0 }

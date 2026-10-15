@@ -88,9 +88,9 @@ function Kpi({ label, value, note, tone, to }: { label: string; value: string; n
 }
 
 /** A dashboard card whose whole body opens a page. */
-function LinkCard({ title, to, children }: { title: string; to: Route; children: ReactNode }) {
+function LinkCard({ title, to, children, collapsible, alert }: { title: string; to: Route; children: ReactNode; collapsible?: string; alert?: 'bad' | 'warn' | null }) {
   return (
-    <Box title={title} aside={<a className="linkbtn" href={href(to)}>Open</a>} className="dash-card">
+    <Box title={title} aside={<a className="linkbtn" href={href(to)}>Open</a>} className="dash-card" collapsible={collapsible} alert={alert}>
       <a className="card-link" href={href(to)} aria-label={`${title}: open`}>{children}</a>
     </Box>
   )
@@ -115,7 +115,7 @@ function ProgressGauge({ A }: { A: Analysis }) {
   const pct = total ? Math.round((A.ready / total) * 100) : 0
   const arc = 'M 20 100 A 80 80 0 0 1 180 100'
   return (
-    <LinkCard title="Overall progress" to={{ page: 'barangays', brgy: null }}>
+    <LinkCard title="Overall progress" to={{ page: 'barangays', brgy: null }} collapsible="dash-progress">
       <div className="box-bd gauge-wrap">
         <div className="gauge" role="img" aria-label={`${pct} percent of barangays are ready`}>
           <svg viewBox="0 0 200 112">
@@ -146,7 +146,7 @@ function StatusDonut({ A }: { A: Analysis }) {
     start: nonzero.slice(0, i).reduce((a, x) => a + (x.n / total) * 100, 0),
   }))
   return (
-    <Box title="Barangays by status" className="dash-card">
+    <Box title="Barangays by status" className="dash-card" collapsible="dash-status" alert={rows.some((r) => r.tone === 'bad' && r.n) ? 'bad' : null}>
       <div className="box-bd donut-wrap">
         <div className="donut">
           <svg viewBox="0 0 160 160" role="img" aria-label={rows.map((r) => `${r.label}: ${r.n}`).join(', ')}>
@@ -192,7 +192,7 @@ function Attention({ A }: { A: Analysis }) {
       title="Needs your attention"
       aside={list.length > 0 && <Chip tone={A.errs ? 'bad' : 'warn'}>{plural(list.length, 'item')}</Chip>}
       className="dash-card"
-      collapsible={isSecretary ? 'attention' : undefined}
+      collapsible={isSecretary ? 'attention' : 'dash-attention'}
       alert={A.errs ? 'bad' : list.length ? 'warn' : null}
     >
       {shown.length ? (
@@ -240,8 +240,9 @@ function Meter({ label, n, of, unit }: { label: string; n: number; of: number; u
 function DocsCard({ A }: { A: Analysis }) {
   const brgys = useStore((s) => s.sub.brgys)
   const signed = brgys.reduce((a, b) => a + b.tanods.filter((t) => (t.ids || 0) >= 3).length, 0)
+  const missing = brgys.some((b) => !b.docs.cert || !b.docs.designation) || signed < A.totals.n
   return (
-    <LinkCard title="Documents received" to={{ page: 'barangays', brgy: null }}>
+    <LinkCard title="Documents received" to={{ page: 'barangays', brgy: null }} collapsible="dash-docs" alert={missing ? 'warn' : null}>
       <div className="box-bd meters">
         <Meter label="Barangay Certification" n={brgys.filter((b) => b.docs.cert).length} of={brgys.length} unit="barangay" />
         <Meter label="Proof of designation" n={brgys.filter((b) => b.docs.designation).length} of={brgys.length} unit="barangay" />
@@ -276,6 +277,8 @@ function BarangayBoard({ A }: { A: Analysis }) {
         </div>
       }
       className="dash-card board-card"
+      collapsible="dash-board"
+      alert={brgys.some((b) => b.tanods.length > b.limit) ? 'bad' : null}
     >
       {shown.length ? (
         <ul className="board">
