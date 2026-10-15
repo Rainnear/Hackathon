@@ -14,17 +14,19 @@ import { useAuth } from '../state/auth'
 import { ReportProblem } from './HelpPage'
 import { HallArt, WaitingArt } from '../components/Illustrations'
 
-function AuthCard({ title, sub, children, footer, art, centered = false }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode; art?: ReactNode; centered?: boolean }) {
+function AuthCard({ title, sub, children, footer, art, centered = false, brand = true }: { title: string; sub?: ReactNode; children: ReactNode; footer?: ReactNode; art?: ReactNode; centered?: boolean; brand?: boolean }) {
   return (
     <div className="auth">
       <div className="auth-card">
-        <div className="auth-brand">
-          <img src="/logo.svg" alt="" width="36" height="36" />
-          <div>
-            <b>Sakto</b>
-            <span>Tanod incentive documents · Province of Iloilo</span>
+        {brand && (
+          <div className="auth-brand">
+            <img src="/logo.svg" alt="" width="36" height="36" />
+            <div>
+              <b>Sakto</b>
+              <span>Tanod incentive documents · Province of Iloilo</span>
+            </div>
           </div>
-        </div>
+        )}
         {art}
         <h2 className={centered ? 'center' : undefined}>{title}</h2>
         {sub && <p className="sub">{sub}</p>}
@@ -79,6 +81,7 @@ function SignIn({ go }: { go: (m: Mode) => void }) {
       art={<img className="auth-logo" src="/sakto-logo.webp" alt="Sakto" width={720} height={420} />}
       title="Sign in"
       centered
+      brand={false}
       footer={<>New here? <button type="button" className="linkbtn" onClick={() => go('signup')}>Create an account</button></>}
     >
       <form className="stack" onSubmit={submit}>
