@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Archives (a zipped copy of the project includes node_modules and .env.local)
+*.zip

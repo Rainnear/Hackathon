@@ -10,6 +10,8 @@ import { useStore, type SubmissionStatus } from '../state/store'
 import { purgeSubmissionScans } from '../lib/scans'
 import { setSubmissionStatus } from '../state/sync'
 import { toast } from '../state/toast'
+import { useEditable } from '../state/access'
+import { useAuth } from '../state/auth'
 
 function Stats({ A }: { A: Analysis }) {
   const sub = useStore((s) => s.sub)
@@ -59,6 +61,7 @@ function IssueGroups({ A }: { A: Analysis }) {
 function ObrCheck({ A }: { A: Analysis }) {
   const sub = useStore((s) => s.sub)
   const setObr = useStore((s) => s.setObr)
+  const editable = useEditable()
   const payee = expectedPayee(sub)
   const amt = A.totals.amt
   const payeeOK = !!sub.obr.payee && norm(sub.obr.payee) === norm(payee)
@@ -66,14 +69,13 @@ function ObrCheck({ A }: { A: Analysis }) {
   const field = (k: ObrKey, label: string, extra: { placeholder?: string; inputMode?: 'decimal' } = {}) => (
     <div className="field">
       <label htmlFor={`obr_${k}`}>{label}</label>
-      <input id={`obr_${k}`} value={sub.obr[k]} autoComplete="off" {...extra}
+      <input id={`obr_${k}`} value={sub.obr[k]} autoComplete="off" disabled={!editable} {...extra}
         onChange={(e) => setObr(k, e.target.value)} onBlur={(e) => setObr(k, e.target.value.trim())} />
     </div>
   )
   return (
-    <Box title="Obligation Request check">
+    <Box title="Obligation Request check" tip="Type the payee and amount exactly as written on the ObR from the province. They must match the payroll.">
       <div className="box-bd">
-        <p className="note mb3">Type the payee and amount exactly as written on the ObR from the province. They must match the payroll.</p>
         <div className="fields">
           {field('no', 'ObR number')}
           {field('payee', 'Payee on ObR', { placeholder: payee })}
@@ -92,6 +94,7 @@ function ObrCheck({ A }: { A: Analysis }) {
 
 /** Open → submitted (secretaries locked out) → closed (nobody can change it). */
 function StatusBox() {
+  const isAdmin = useAuth((s) => s.profile?.role === 'admin')
   const status = useStore((s) => s.remote?.status)
   const year = useStore((s) => s.sub.year)
   const [busy, setBusy] = useState(false)
@@ -111,6 +114,19 @@ function StatusBox() {
     }
   }
   if (!status) return null
+  // The provincial office sees where the list stands; the Liga Rep locks, reopens and closes it.
+  if (isAdmin)
+    return (
+      <Box title={`CY ${year} list`} aside={<Chip tone={status === 'open' ? 'warn' : 'ok'}>{status === 'open' ? 'Open for encoding' : status === 'submitted' ? 'Submitted' : 'Closed'}</Chip>}>
+        <p className="box-bd">
+          {status === 'open'
+            ? 'Barangay secretaries are still encoding. The Liga Rep locks the list when it is ready to submit.'
+            : status === 'submitted'
+              ? 'The Liga Rep has locked the list and marked it as submitted.'
+              : 'The year is closed. The lists can be viewed and printed.'}
+        </p>
+      </Box>
+    )
   return (
     <Box title={`CY ${year} list`} aside={<Chip tone={status === 'open' ? 'warn' : 'ok'}>{status === 'open' ? 'Open for encoding' : status === 'submitted' ? 'Submitted' : 'Closed'}</Chip>}>
       <div className="box-bd stack">

@@ -3,43 +3,16 @@ import { useEffect, useState } from 'react'
 import { clean, cleanMI, newId, plural } from '../domain/format'
 import { POSITIONS, SUFFIXES, type Position, type Suffix, type Tanod } from '../domain/types'
 import { READER_CONNECTED, type IdField } from '../lib/reader'
-import { deleteScans, markScanSaved, photoUrl, type Scan } from '../lib/scans'
+import { deleteScans, markScanSaved, type Scan } from '../lib/scans'
 import { useEditable } from '../state/access'
 import { isWaiting, useScans } from '../state/scans'
 import { useStore } from '../state/store'
 import { useSync } from '../state/sync'
 import { toast } from '../state/toast'
+import { ListReviewForm } from './ListReview'
+import { ScanPhoto } from './ScanPhoto'
+import { printIdFor } from '../state/goTo'
 import { Modal } from './Modal'
-
-/** One ID photo from private storage. Tap to open it full size. */
-export function ScanPhoto({ path, label }: { path: string | null; label: string }) {
-  const [url, setUrl] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
-  useEffect(() => {
-    if (!path) return
-    let alive = true
-    photoUrl(path).then(
-      (u) => alive && setUrl(u),
-      () => alive && setFailed(true),
-    )
-    return () => {
-      alive = false
-    }
-  }, [path])
-  if (!path) return <div className="scan-photo missing">No {label.toLowerCase()} photo</div>
-  return (
-    <figure className="scan-photo">
-      {url && !failed ? (
-        <a href={url} target="_blank" rel="noopener noreferrer" title="Open full size">
-          <img src={url} alt={`${label} of the ID`} onError={() => setFailed(true)} />
-        </a>
-      ) : (
-        <div className="ph">{failed ? 'Photo could not load. Check your internet.' : 'Loading photo…'}</div>
-      )}
-      <figcaption>{label} · tap to enlarge</figcaption>
-    </figure>
-  )
-}
 
 const SURE = 0.8
 
@@ -76,10 +49,21 @@ function ReviewForm({ scan, position, total }: { scan: Scan; position: number; t
     const tanod: Tanod = { id: newId(), last: clean(v.last), first: clean(v.first), mi: cleanMI(v.mi), suffix: v.suffix, pos: v.pos, ids: v.ids }
     try {
       // Mark the scan first (needs internet); only then add the row, so a scan can't become two tanods.
-      await markScanSaved(scan.id, tanod.id, { ...f, last: tanod.last, first: tanod.first, mi: tanod.mi, suffix: tanod.suffix })
+      // The confirmed name, plus what the reader made of the photo (kept for the cross-check with the list).
+      const conf = Math.min(f.confidence?.last ?? 0, f.confidence?.first ?? 0)
+      const read = f.reader && f.reader !== 'none' ? { last: clean(f.last), first: clean(f.first), mi: cleanMI(f.mi), suffix: f.suffix ?? '', conf } : undefined
+      await markScanSaved(scan.id, tanod.id, { ...f, ...(read ? { read } : {}), last: tanod.last, first: tanod.first, mi: tanod.mi, suffix: tanod.suffix })
       addTanods(b.name, [tanod])
       upsert({ ...scan, status: 'saved', tanod_id: tanod.id })
-      toast(`${tanod.first} ${tanod.last} added to Brgy. ${b.name}.`)
+      // The ID is here: offer to print it for the tanod's three signatures.
+      const brgy = b.name
+      toast(`${tanod.first} ${tanod.last} added to Brgy. ${brgy}.`, {
+        label: 'Print ID for signing',
+        run: () => {
+          useScans.getState().close()
+          printIdFor(brgy, tanod.id)
+        },
+      })
       next()
     } catch (e) {
       toast((e as Error).message)
@@ -127,7 +111,12 @@ function ReviewForm({ scan, position, total }: { scan: Scan; position: number; t
                 : 'Automatic reading is not connected yet. Type the details from the photo.'}
             </div>
           )}
-          {read && f.reader?.startsWith('sample') && <div className="banner">Sample values (development only). Check them against the photo.</div>}
+          {read && (
+            <div className="banner ok">
+              Filled in automatically{f.reader === 'ai' ? ' by the AI reader' : ''}. Check every field against the photo
+              {f.last && f.first ? '.' : ', and type what it could not find.'}
+            </div>
+          )}
           <p className="note">
             Brgy. {name ?? '—'} · Compare each field with the ID and fix anything that's wrong. Names are saved in capital letters.
           </p>
@@ -149,17 +138,10 @@ function ReviewForm({ scan, position, total }: { scan: Scan; position: number; t
               {POSITIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <div className="field">
-            <span className="lbl-like">Signatures on the ID photocopy</span>
-            <span className="ids" role="group" aria-label="Signatures on ID photocopy">
-              {[1, 2, 3].map((k) => (
-                <button key={k} type="button" className={v.ids >= k ? 'on' : ''} aria-pressed={v.ids >= k} aria-label={`Signature ${k} of 3`}
-                  onClick={() => set({ ids: v.ids === k ? k - 1 : k })}>
-                  {k}
-                </button>
-              ))}
-            </span>
-          </div>
+          <label className="check-inline">
+            <input type="checkbox" checked={v.ids >= 3} onChange={(e) => set({ ids: e.target.checked ? 3 : 0 })} />
+            ID photocopy signed (3 signatures)
+          </label>
           {full && b && <div className="banner bad">Brgy. {b.name} already has {b.tanods.length} of {b.limit} tanods. Remove someone first, or skip this scan for now.</div>}
           {!editable && <div className="banner">The list is locked, so new tanods can't be added.</div>}
           {!online && <div className="banner bad">Saving a scan needs internet. Connect, then try again.</div>}
@@ -201,10 +183,14 @@ export function ScanReview() {
         close()
         if (remaining) toast(`${plural(remaining, 'scan')} still waiting. Find them under "Scans to review".`)
       }}
-      title="Check the scanned ID"
+      title={scan?.kind === 'list' ? 'Check the names from the list' : 'Check the scanned ID'}
       wide
     >
-      {scan && queue && <ReviewForm key={scan.id} scan={scan} position={index + 1} total={queue.length} />}
+      {scan && queue && (scan.kind === 'list' ? (
+        <ListReviewForm key={scan.id} scan={scan} position={index + 1} total={queue.length} />
+      ) : (
+        <ReviewForm key={scan.id} scan={scan} position={index + 1} total={queue.length} />
+      ))}
     </Modal>
   )
 }
@@ -218,7 +204,7 @@ export function ScansWaiting({ barangayId }: { barangayId?: number }) {
   if (!waiting.length) return null
   return (
     <div className="banner scans-waiting">
-      <span>{plural(waiting.length, 'scanned ID')} waiting for review.</span>
+      <span>{plural(waiting.length, 'scan')} waiting for review.</span>
       <button type="button" className="btn primary" onClick={() => review(waiting.map((s) => s.id))}>Review now</button>
     </div>
   )

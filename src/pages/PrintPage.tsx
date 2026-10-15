@@ -30,7 +30,8 @@ export function PrintPage({ A, doc }: { A: Analysis; doc: DocView }) {
               </a>
             ))}
           </div>
-          <a className="btn" href={href({ page: 'certificate', brgy: null })}>Barangay certifications</a>
+          <a className="btn" href={href({ page: 'templates', doc: 'certification', brgy: null })}>Barangay certifications</a>
+          <a className="btn" href={href({ page: 'templates', doc: null, brgy: null })}>Blank forms</a>
           <button type="button" className="btn primary" onClick={() => window.print()}>Print</button>
         </div>
       </PageHead>

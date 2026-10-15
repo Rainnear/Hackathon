@@ -60,12 +60,12 @@ const isNetworkError = (e: unknown) => {
 function describe(e: unknown): string {
   const err = e as DbError
   if (err?.code === '42501' || /row-level security|permission denied/i.test(err?.message ?? ''))
-    return 'Supabase refused the change. The list may have been submitted by the Tanod Rep, or your access changed.'
+    return 'Supabase refused the change. The list may have been submitted by the Liga Rep, or your access changed.'
   return err?.message || 'Something went wrong while saving online.'
 }
 
 // ---------- Shapes from Supabase ----------
-const SUB_COLS = 'id, year, status, amount_per_tanod, signatories, obr_no, obr_payee, obr_amount'
+const SUB_COLS = 'id, year, status, amount_per_tanod, signatories, obr_no, obr_payee, obr_amount, barangay_due'
 interface SubRow {
   id: number
   year: number
@@ -75,6 +75,7 @@ interface SubRow {
   obr_no: string
   obr_payee: string
   obr_amount: string
+  barangay_due: string | null
 }
 interface BrgyRow {
   id: number
@@ -96,7 +97,14 @@ interface ReqRow {
   spa: boolean
   focal_name: string
   focal_phone: string
+  /** From database script 1300; missing on databases that haven't run it yet. */
+  captain_name?: string
+  secretary_name?: string
 }
+
+/** Whether the database has the barangay officials' columns (script 1300); learned on each download. */
+let hasOfficials = true
+const REQ_COLS = 'barangay_id, certification, designation, via_representative, spa, focal_name, focal_phone'
 
 interface DepRow {
   tanod_id: string
@@ -129,7 +137,7 @@ function groupBy<T, K>(xs: T[], key: (x: T) => K): Map<K, T[]> {
   return m
 }
 
-function buildSubmission(muni: string, s: SubRow, brgys: BrgyRow[], entries: EntryRow[], reqs: ReqRow[], deps: DepRow[]): Submission {
+function buildSubmission(muni: string, s: SubRow, brgys: BrgyRow[], entries: EntryRow[], reqs: ReqRow[], deps: DepRow[], provinceDue: string): Submission {
   const byBrgy = groupBy(entries, (e) => e.barangay_id)
   const depBy = groupBy(deps, (d) => d.barangay_id)
   const reqBy = new Map(reqs.map((r) => [r.barangay_id, r]))
@@ -142,6 +150,8 @@ function buildSubmission(muni: string, s: SubRow, brgys: BrgyRow[], entries: Ent
     amount: Number(s.amount_per_tanod) || MIN_AMOUNT,
     sig,
     obr: { no: s.obr_no, payee: s.obr_payee, amount: s.obr_amount },
+    barangayDue: s.barangay_due ?? '',
+    provinceDue,
     brgys: brgys.map((b): Barangay => {
       const r = reqBy.get(b.id)
       return {
@@ -150,6 +160,7 @@ function buildSubmission(muni: string, s: SubRow, brgys: BrgyRow[], entries: Ent
         tanods: (byBrgy.get(b.id) ?? []).map(toTanod),
         docs: { cert: !!r?.certification, designation: !!r?.designation, viaRep: !!r?.via_representative, spa: !!r?.spa },
         focal: { name: r?.focal_name ?? '', phone: r?.focal_phone ?? '' },
+        officials: { captain: r?.captain_name ?? '', secretary: r?.secretary_name ?? '' },
         left: (depBy.get(b.id) ?? []).map((d) => ({ tanodId: d.tanod_id, name: fullName(toTanod(d)), reason: d.reason, note: d.note })),
       }
     }),
@@ -166,20 +177,21 @@ export function mergeServer(server: Submission, local: Submission, pending: Pend
   const removedIn = new Set(Object.values(pending.removed))
   return {
     ...server,
-    ...(pending.sub ? { amount: local.amount, sig: local.sig, obr: local.obr } : {}),
+    ...(pending.sub ? { amount: local.amount, sig: local.sig, obr: local.obr, barangayDue: local.barangayDue } : {}),
     brgys: server.brgys.map((sb) => {
       const lb = localBy.get(sb.name)
       if (!lb) return sb
       const docs = pending.reqs[sb.name] ? lb.docs : sb.docs
       const focal = pending.reqs[sb.name] ? lb.focal : sb.focal
+      const officials = pending.reqs[sb.name] ? lb.officials : sb.officials
       const left = [...sb.left.filter((d) => !pending.departures[d.tanodId]), ...lb.left.filter((d) => pending.departures[d.tanodId])]
       const touched = !!pending.order[sb.name] || removedIn.has(sb.name) || lb.tanods.some((t) => pending.tanods[t.id])
-      if (!touched) return { ...sb, docs, focal, left }
+      if (!touched) return { ...sb, docs, focal, officials, left }
       const fromServer = new Map(sb.tanods.map((t) => [t.id, t]))
       const here = new Set(lb.tanods.map((t) => t.id))
       const kept = lb.tanods.flatMap((t) => (pending.tanods[t.id] ? [t] : fromServer.has(t.id) ? [fromServer.get(t.id)!] : []))
       const added = sb.tanods.filter((t) => !here.has(t.id) && !pending.removed[t.id])
-      return { ...sb, docs, focal, left, tanods: [...kept, ...added] }
+      return { ...sb, docs, focal, officials, left, tanods: [...kept, ...added] }
     }),
   }
 }
@@ -194,7 +206,7 @@ async function pull(year?: number) {
 
   let s: SubRow | null
   if (p.role === 'secretary') {
-    // The Tanod Rep opens each year; secretaries work in the open one (or see the latest, read-only).
+    // The Liga Rep opens each year; secretaries work in the open one (or see the latest, read-only).
     const rows = check(await supabase.from('submissions').select(SUB_COLS).eq('municipality_id', p.municipality_id).order('year', { ascending: false }).limit(5)) as SubRow[]
     s = rows.find((r) => r.status === 'open') ?? rows[0] ?? null
     if (!s) {
@@ -204,6 +216,11 @@ async function pull(year?: number) {
   } else {
     const y = year ?? st.remote?.year ?? new Date().getFullYear()
     s = check(await supabase.from('submissions').select(SUB_COLS).eq('municipality_id', p.municipality_id).eq('year', y).maybeSingle()) as SubRow | null
+    // The provincial office only looks: opening a municipality must not start its year.
+    if (!s && p.role === 'admin') {
+      useSync.setState({ phase: st.remote ? 'ready' : 'no-submission' })
+      return
+    }
     if (!s)
       s = check(
         await supabase.from('submissions').insert({ municipality_id: p.municipality_id, year: y, signatories: defaultSignatories() }).select(SUB_COLS).single(),
@@ -224,9 +241,16 @@ async function pull(year?: number) {
     if (brgyId) q = q.eq('barangay_id', brgyId)
     return q.order('barangay_id').order('sort_order').order('created_at').order('tanod_id').range(from, to) as unknown as PromiseLike<{ data: EntryRow[] | null; error: Error | null }>
   })
-  let rq = supabase.from('barangay_requirements').select('barangay_id, certification, designation, via_representative, spa, focal_name, focal_phone').eq('submission_id', subId)
-  if (brgyId) rq = rq.eq('barangay_id', brgyId)
-  const reqs = check(await rq) as ReqRow[]
+  // The officials' columns arrived with database script 1300; before it runs, read without them.
+  const readReqs = (cols: string) => {
+    let rq = supabase.from('barangay_requirements').select(cols).eq('submission_id', subId)
+    if (brgyId) rq = rq.eq('barangay_id', brgyId)
+    return rq
+  }
+  let rr = await readReqs(REQ_COLS + ', captain_name, secretary_name')
+  hasOfficials = !(rr.error && /captain_name|secretary_name/.test(rr.error.message))
+  if (!hasOfficials) rr = await readReqs(REQ_COLS)
+  const reqs = check(rr) as unknown as ReqRow[]
   let dq = supabase.from('tanod_departures').select(DEP_COLS).eq('submission_id', subId)
   if (brgyId) dq = dq.eq('barangay_id', brgyId)
   const deps = check(await dq) as unknown as DepRow[]
@@ -251,7 +275,9 @@ async function pull(year?: number) {
     }
   }
 
-  const server = buildSubmission(p.municipality ?? '', s, brgys, entries, reqs, deps)
+  // The province's deadline for every municipality this year (set by the provincial office).
+  const due = check(await supabase.from('year_deadlines').select('municipal_due').eq('year', s.year).maybeSingle()) as { municipal_due: string } | null
+  const server = buildSubmission(p.municipality ?? '', s, brgys, entries, reqs, deps, due?.municipal_due ?? '')
   const sid = s.id
   const status = s.status
   const year2 = s.year
@@ -284,6 +310,8 @@ const chunks = <T>(xs: T[]) => Array.from({ length: Math.ceil(xs.length / CHUNK)
 async function push(): Promise<boolean> {
   const { pending, remote, sub } = useStore.getState()
   if (!remote || !pendingCount(pending)) return false
+  // The provincial office views municipalities read-only.
+  if (me?.role === 'admin') return false
   // Secretaries can only change an open year; the database would refuse anyway.
   if (me?.role === 'secretary' && remote.status !== 'open') return false
   useSync.setState({ activity: 'uploading' })
@@ -330,6 +358,7 @@ async function push(): Promise<boolean> {
           submission_id: sid, barangay_id: bid,
           certification: b.docs.cert, designation: b.docs.designation, via_representative: b.docs.viaRep, spa: b.docs.spa,
           focal_name: b.focal.name, focal_phone: b.focal.phone,
+          ...(hasOfficials ? { captain_name: b.officials.captain, secretary_name: b.officials.secretary } : {}),
         }]
       : []
   })
@@ -350,7 +379,7 @@ async function push(): Promise<boolean> {
     check(
       await supabase
         .from('submissions')
-        .update({ amount_per_tanod: sub.amount, signatories: sub.sig, obr_no: sub.obr.no, obr_payee: sub.obr.payee, obr_amount: sub.obr.amount })
+        .update({ amount_per_tanod: sub.amount, signatories: sub.sig, obr_no: sub.obr.no, obr_payee: sub.obr.payee, obr_amount: sub.obr.amount, barangay_due: sub.barangayDue || null })
         .eq('id', sid),
     )
     sent.sub = pending.sub
@@ -371,13 +400,13 @@ async function push(): Promise<boolean> {
   return true
 }
 
-/** A secretary with changes that can no longer go up because the Tanod Rep locked the year. */
+/** A secretary with changes that can no longer go up because the Liga Rep locked the year. */
 function lockedMessage(): string | null {
   const st = useStore.getState()
   const r = st.remote
   const n = waitingCount(st)
   if (me?.role !== 'secretary' || !r || r.status === 'open' || !n) return null
-  return `The Tanod Rep has locked the CY ${r.year} list, so ${n === 1 ? '1 change' : `${n} changes`} made on this device can't be uploaded. Ask the Tanod Rep to reopen it, or discard ${n === 1 ? 'it' : 'them'}.`
+  return `The Liga Rep has locked the CY ${r.year} list, so ${n === 1 ? '1 change' : `${n} changes`} made on this device can't be uploaded. Ask the Liga Rep to reopen it, or discard ${n === 1 ? 'it' : 'them'}.`
 }
 
 // ---------- Running it ----------
@@ -393,7 +422,7 @@ async function run(kind: 'upload' | 'full', year?: number) {
         if (isNetworkError(e)) throw e
         refused = e
       }
-      // After a refused upload, download anyway: the usual reason is that the Tanod Rep locked the year,
+      // After a refused upload, download anyway: the usual reason is that the Liga Rep locked the year,
       // and the fresh status lets the message say so.
       if (kind === 'full' || firstLoad || refused) await pull(year)
       error = lockedMessage() ?? (refused ? describe(refused) : null)
@@ -477,21 +506,21 @@ export function startSync(profile: Profile): () => void {
   }
 }
 
-/** Tanod Rep: switch to another calendar year (opening it if it doesn't exist yet). */
+/** Liga Rep: switch to another calendar year (opening it if it doesn't exist yet). */
 export async function switchYear(year: number) {
   if (!me) return
   if (pendingCount(useStore.getState().pending)) throw new Error('Wait until your changes are uploaded before switching years.')
   await open(me, year)
 }
 
-/** Tanod Rep: open, submit (locks secretaries out) or close the year. */
+/** Liga Rep: open, submit (locks secretaries out) or close the year. */
 export async function setSubmissionStatus(status: SubmissionStatus) {
   const remote = useStore.getState().remote
   if (!remote) return
   await syncNow()
   const res = await supabase.from('submissions').update({ status }).eq('id', remote.submissionId).select('id')
   if (res.error) throw new Error(describe(res.error))
-  if (!res.data?.length) throw new Error('Only the Tanod Rep or an administrator can change this.')
+  if (!res.data?.length) throw new Error('Only the Liga Rep or an administrator can change this.')
   await syncNow()
 }
 

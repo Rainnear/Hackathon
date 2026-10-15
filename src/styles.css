@@ -5,7 +5,7 @@
   --ink: #18221E; --muted: #5C6A63; --accent: #0E6B57; --accent-ink: #FFFFFF; --accent-soft: #DCEFE8;
   --ok: #1C7C45; --ok-soft: #DFF2E5; --warn: #8A5800; --warn-soft: #FBEFD6; --bad: #B3261E; --bad-soft: #FBE3E0;
   --shadow: 0 1px 3px rgba(20, 34, 28, .12);
-  --paper: #FFFFFF; --paper-ink: #111111; --band: #1EA8E0; --draft: rgba(179, 38, 30, .16); --paper-alert: #B3261E;
+  --paper: #FFFFFF; --paper-ink: #111111; --band: #E6E6E6; --draft: rgba(179, 38, 30, .16); --paper-alert: #B3261E;
   --f-body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   /* Sized for reading at arm's length: many barangay secretaries use reading glasses. */
@@ -305,7 +305,7 @@ ul.issues > .issue:first-child { border-top: 0 }
 .docs { overflow-x: auto; padding: var(--s4); background: var(--sunk); border-radius: var(--r) }
 .page { background: var(--paper); color: var(--paper-ink); margin: 0 auto 18px; box-shadow: var(--shadow); font-family: Arial, Helvetica, sans-serif; position: relative; color-scheme: light }
 .page.portrait { width: 8.5in; min-height: 13in; padding: .6in .7in .5in }
-.page.landscape { width: 13in; min-height: 8.5in; padding: .45in .5in }
+.page.landscape { width: 13in; min-height: 8.5in; padding: .4in .5in .3in }
 .page.draft::after { content: "DRAFT — NOT FOR SUBMISSION"; position: absolute; top: 42%; left: 0; right: 0; text-align: center; font: 800 48px Arial, sans-serif; color: var(--draft); transform: rotate(-18deg); pointer-events: none }
 .ml-head { text-align: center; font-size: 13px; line-height: 1.35 }
 .ml-head .t { font-weight: 700; margin-top: 18px; font-size: 14px }
@@ -324,16 +324,23 @@ table.paper td.r { text-align: right; font-variant-numeric: tabular-nums }
 .pay-sub { text-align: center; font-weight: 700; font-size: 12px }
 .pay-ack { font-size: 11.5px; margin-top: 8px }
 tr.band td { background: var(--band); font-weight: 700; color: var(--paper-ink) }
-tr.muni td { font-weight: 700; padding-left: 60px }
+tr.pay-muni td { font-weight: 700; padding-left: 60px }
 .tot td { font-weight: 700 }
+/* Payroll rows are tall enough for each tanod to sign in. */
+table.paper.pay td { height: 27px }
+table.paper.pay tr.band td, table.paper.pay tr.pay-muni td, table.paper.pay tr.tot td { height: 20px }
+tr.band .cont { font-weight: 400; font-style: italic }
+.page.landscape .pgno { margin-top: 6px }
 .cert { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 1px solid var(--paper-ink); border-top: 0; font-size: 10px }
-.cert > div { border-right: 1px solid var(--paper-ink); padding: 5px 7px; min-height: 74px; display: flex; flex-direction: column }
+.cert > div { border-right: 1px solid var(--paper-ink); padding: 4px 7px 5px; display: flex; flex-direction: column }
 .cert > div:nth-child(3n) { border-right: 0 }
 .cert > div:nth-child(-n+3) { border-bottom: 1px solid var(--paper-ink) }
 .cert .k { font-weight: 700 }
-.cert .nm { margin-top: auto; font-weight: 700; text-transform: uppercase; font-size: 10.5px }
-.cert .mt { margin-top: 10px }
-.cert .mta { margin-top: auto }
+/* Room to sign, then the printed name on a line, then what the line is for. */
+.cert .sig { margin-top: auto; padding-top: 20px; display: flex; flex-direction: column; align-items: center; text-align: center }
+.cert .sig .nm { min-width: 75%; min-height: 14px; border-bottom: 1px solid var(--paper-ink); font-weight: 700; text-transform: uppercase; font-size: 10.5px }
+.cert .cap { font-size: 9.5px; line-height: 1.25 }
+.cert .cf { gap: 10px }
 .cover h4 { margin: 0 0 4px; font-size: 18px }
 .cover-grid { display: grid; grid-template-columns: 1fr 200px; gap: 20px; margin-top: 16px }
 .cover-facts { margin-top: 10px; font-size: 13px; line-height: 1.7 }
@@ -693,3 +700,307 @@ ul.others { list-style: none; margin: 0; padding: var(--s1) 0 }
   .others li { grid-template-columns: minmax(0, 1fr) auto }
   .o-bar, .o-marks { grid-column: 1 / -1 }
 }
+
+/* ---------- Deadline banner: pinned to the top of every page ---------- */
+.deadline {
+  position: sticky; top: 0; z-index: 7; display: flex; align-items: center; gap: var(--s3) var(--s4); flex-wrap: wrap;
+  margin: 0 calc(-1 * max(24px, env(safe-area-inset-left, 0px))); padding: var(--s3) max(24px, env(safe-area-inset-left, 0px));
+  padding-top: calc(var(--s3) + env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--line); background: var(--accent-soft); color: var(--ink); box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+.dl-count { flex: none; min-width: 72px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; padding: var(--s2) var(--s3); border-radius: var(--r); background: var(--surface) }
+.dl-count b { font-size: 34px; font-weight: 800 }
+.dl-count span { font-size: var(--t-xs); font-weight: 700; margin-top: 3px; text-transform: uppercase; letter-spacing: .04em }
+.dl-text { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 2px }
+.dl-text b { font-size: var(--t-lg); line-height: 1.3 }
+.dl-text span { font-size: var(--t-sm) }
+.dl-act { flex: none }
+.deadline.calm .dl-count { color: var(--accent) }
+.deadline.soon { background: var(--warn-soft); border-bottom-color: var(--warn) }
+.deadline.soon .dl-count { color: var(--warn) }
+/* Near or past due: solid red, impossible to miss. */
+.deadline.urgent, .deadline.today, .deadline.overdue { background: #B3261E; color: #fff; border-bottom-color: #8C1D18 }
+.deadline.urgent .dl-count, .deadline.today .dl-count, .deadline.overdue .dl-count { background: #fff; color: #B3261E }
+.deadline.urgent .btn, .deadline.today .btn, .deadline.overdue .btn { background: #fff; color: #B3261E; border-color: #fff }
+.deadline.overdue .dl-count { animation: dl-pulse 2s ease-in-out infinite }
+@keyframes dl-pulse { 50% { transform: scale(1.06) } }
+.deadline.done { background: var(--ok-soft) }
+.deadline.done .dl-count { color: var(--ok); font-size: 30px; font-weight: 800 }
+@media (max-width: 899px) {
+  .deadline { margin: 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding-inline: max(16px, env(safe-area-inset-left, 0px)); gap: var(--s2) var(--s3) }
+  .dl-count { min-width: 60px; padding: var(--s1) var(--s2) }
+  .dl-count b { font-size: 28px }
+  .dl-text { min-width: 0; flex-basis: calc(100% - 80px) }
+  .dl-text b { font-size: var(--t-md) }
+  .dl-text span { font-size: var(--t-xs) }
+  .dl-act { width: 100% }
+}
+@media (prefers-reduced-motion: reduce) { .deadline.overdue .dl-count { animation: none } }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center }
+.mu-name .chips { display: flex; margin-top: 4px; margin-left: 1.1em }
+/* Phones: the pinned banner stays one compact row (count + headline + date); the longer reason and the
+   button show on wider screens, where there is room. */
+@media (max-width: 899px) {
+  .deadline { flex-wrap: nowrap; align-items: center; padding-block: calc(var(--s2) + env(safe-area-inset-top, 0px)) var(--s2) }
+  .dl-count { min-width: 56px; padding: 4px 6px }
+  .dl-count b { font-size: 24px }
+  .dl-count span { font-size: 10px }
+  .dl-text { flex: 1 1 auto; min-width: 0 }
+  .dl-text b { font-size: var(--t-sm) }
+  .dl-why, .dl-act { display: none }
+}
+
+/* ---------- List review: page photo beside a table of names ---------- */
+.list-review { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr); gap: var(--s5); align-items: start }
+.lr-photo { position: sticky; top: 0 }
+.lr-photo .scan-photo img { max-height: 70vh }
+.lr-rows { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-sm) }
+.lr-row { display: grid; grid-template-columns: 32px minmax(0, 1.3fr) minmax(0, 1.3fr) 64px 84px 40px; gap: var(--s2); align-items: center; padding: var(--s2) var(--s3); border-top: 1px solid var(--line) }
+.lr-row:first-child { border-top: 0 }
+.lr-head { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--sunk) }
+.lr-row > input[type=checkbox] { width: 22px; height: 22px; min-height: 0; accent-color: var(--accent); justify-self: center }
+.lr-row select { padding-inline: 4px }
+.lr-row.unsure { background: var(--warn-soft) }
+.lr-row.dup { background: var(--sunk) }
+.lr-row.off input:not([type=checkbox]), .lr-row.off select { opacity: .55 }
+.lr-note { grid-column: 2 / -1; font-size: var(--t-xs); font-weight: 600; color: var(--warn) }
+.lr-row.dup .lr-note { color: var(--muted) }
+@media (max-width: 860px) {
+  .list-review { grid-template-columns: minmax(0, 1fr) }
+  .lr-photo { position: static }
+  .lr-photo .scan-photo img { max-height: 40vh }
+  .lr-head { display: none }
+  .lr-row { grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "c l f" "c m s" "c x x" }
+  .lr-row > :nth-child(1) { grid-area: c; align-self: start; margin-top: 10px }
+  .lr-row > :nth-child(2) { grid-area: l } .lr-row > :nth-child(3) { grid-area: f } .lr-row > :nth-child(4) { grid-area: m } .lr-row > :nth-child(5) { grid-area: s }
+  .lr-row > :nth-child(6) { grid-area: x; justify-self: end }
+}
+
+/* ---------- Document templates ---------- */
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: var(--s4) }
+.tpl-card { display: flex; flex-direction: column; overflow: hidden }
+.tpl-paper { align-self: center; margin: var(--s4) 0 0; background: var(--paper); border: 1px solid var(--line-strong); border-radius: 3px; box-shadow: var(--shadow); padding: 10px 9px; display: flex; flex-direction: column; gap: 5px }
+.tpl-paper.portrait { width: 64px; height: 98px }
+.tpl-paper.landscape { width: 98px; height: 64px; gap: 4px; padding: 8px 9px }
+.tpl-paper i { display: block; height: 3px; border-radius: 2px; background: var(--line-strong) }
+.tpl-paper i:first-child { width: 60%; align-self: center; background: var(--muted) }
+.tpl-bd { padding: var(--s3) var(--s4); flex: 1 }
+.tpl-bd h3 { margin: 0 0 var(--s1); font-size: var(--t-md) }
+.tpl-bd p { margin: 0 0 var(--s3) }
+.tpl-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--s3); margin: 0; font-size: var(--t-sm) }
+.tpl-facts dt { color: var(--muted); font-weight: 600 }
+.tpl-facts dd { margin: 0 }
+.tpl-ft { padding: 0 var(--s4) var(--s4) }
+.page .blank { display: inline-block; border-bottom: 1px solid var(--paper-ink); height: 1em; vertical-align: baseline }
+.page .blank.w12 { width: 12em }
+table.paper.cont { margin-top: 28px }
+
+/* ---------- Tanod limit and its log ---------- */
+.limit-now { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); font-size: var(--t-md) }
+.limit-now .btn { margin-left: auto }
+.limit-cur { font-size: var(--t-xl); font-weight: 700; line-height: 42px }
+.limit-log-h { margin: var(--s2) 0 0; font-size: var(--t-sm); color: var(--muted); text-transform: uppercase; letter-spacing: .04em }
+ol.limit-log { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-sm) }
+.limit-log li { display: flex; flex-direction: column; gap: 2px; padding: var(--s2) var(--s3); border-top: 1px solid var(--line) }
+.limit-log li:first-child { border-top: 0 }
+.ll-change { font-size: var(--t-md) }
+.editor-col { display: flex; flex-direction: column; gap: var(--s4); min-width: 0 }
+.mu-open { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3) var(--s4) 0 }
+
+/* ---------- Tanod list: read-only rows, Edit and Delete on the right ---------- */
+.rrow.static {
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas: "no name acts" "no note note";
+  padding-block: 10px; border-left: 4px solid transparent; transition: background-color .3s;
+}
+.rrow.static > .c-name { grid-area: name; display: flex; flex-direction: column; min-width: 0 }
+.rrow.static > .c-acts { grid-area: acts; display: flex; gap: var(--s2) }
+.rrow.static .c-name b { font-size: var(--t-md); overflow-wrap: anywhere }
+.rrow.static .c-name small { font-size: var(--t-sm); color: var(--muted) }
+.rrow.static .c-name .short { color: var(--warn); font-weight: 600 }
+.rrow.static .c-no { align-self: start; padding-top: 3px; font-size: var(--t-sm) }
+.rrow.static.err { background: var(--bad-soft); border-left-color: var(--bad) }
+.rrow.static.warnf { background: var(--warn-soft); border-left-color: var(--warn) }
+.rrow.static .c-note { font-size: var(--t-sm); font-weight: 600 }
+.rrow.static.focus { animation: row-flash 2.6s ease-out; outline: 3px solid var(--accent); outline-offset: -3px }
+@keyframes row-flash { 0%, 30% { background: var(--accent-soft) } }
+@container (max-width: 780px) {
+  .rrow.static { grid-template-columns: 28px minmax(0, 1fr); grid-template-areas: "no name" "no acts" "no note"; row-gap: 8px }
+  .rrow.static > .c-acts .btn { flex: 1 }
+}
+input.invalid { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad) }
+.modal-bd.pb0 { padding-bottom: 0 }
+.issue .acts .btn.primary { order: -1 }
+
+/* ---------- Cards that open their page ---------- */
+a.kpi.link { display: block; color: inherit; text-decoration: none; transition: border-color .15s, box-shadow .15s }
+a.kpi.link:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow) }
+.kpi-l { display: flex; align-items: center; gap: var(--s2) }
+.kpi-go { margin-left: auto; color: var(--muted); display: inline-flex }
+a.kpi.link:hover .kpi-go { color: var(--accent) }
+a.card-link { display: block; color: inherit; text-decoration: none; flex: 1; border-radius: 0 0 var(--r) var(--r) }
+a.card-link:hover { background: var(--sunk) }
+.dash-grid > :nth-child(-n+2) > a.card-link { display: flex; flex-direction: column; justify-content: center }
+.kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)) }
+
+ul.checklist.links { padding: 0 }
+.checklist.links li { padding: 0; border-top: 1px solid var(--line) }
+.checklist.links li:first-child { border-top: 0 }
+.checklist.links a { display: flex; gap: var(--s3); align-items: center; padding: var(--s3) var(--s4); color: inherit; text-decoration: none }
+.checklist.links a:hover { background: var(--sunk) }
+.checklist.links .go { color: var(--muted); display: inline-flex }
+.sec-home .welcome h1 { font-size: var(--t-2xl) }
+
+/* ---------- Folding the menu down to its icons ---------- */
+.side-top { display: flex; align-items: center; gap: var(--s1); padding-bottom: var(--s3); border-bottom: 1px solid var(--line) }
+.side-top .side-brand { flex: 1; min-width: 0; border-bottom: 0; padding-bottom: 0 }
+.side-toggle { flex: none }
+.app:has(> .side.collapsed) { grid-template-columns: 76px minmax(0, 1fr) }
+.side.collapsed { padding-inline: var(--s2); align-items: stretch }
+.side.collapsed .side-top { flex-direction: column; gap: var(--s2) }
+.side.collapsed .side-brand { justify-content: center; padding: 0 }
+.side.collapsed .side-brand > span,
+.side.collapsed .side-link .lbl,
+.side.collapsed .side-foot .who,
+.side.collapsed .side-foot .btn .t { display: none }
+.side.collapsed .side-link { justify-content: center; padding-inline: 0; position: relative }
+.side.collapsed .side-link .badge { position: absolute; top: 2px; right: 0; font-size: 10px; padding: 0 5px; min-width: 0 }
+.side.collapsed .side-foot .btn { padding-inline: 0; justify-content: center }
+.checklist.links a { flex: 1; min-width: 0 }
+@media (max-width: 700px) {
+  .kpis.three { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2) }
+  .kpis.three .kpi { padding: var(--s3) }
+  .kpis.three .kpi-l { font-size: var(--t-sm) }
+  .kpis.three .kpi-v { font-size: 22px }
+  .kpis.three .kpi-n, .kpis.three .kpi-go { display: none }
+}
+
+/* ---------- Tanod screen: the list in the middle, checks and requirements in a narrow panel ---------- */
+.tanod-screen { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--s5); align-items: start }
+.ts-main { display: flex; flex-direction: column; gap: var(--s4); min-width: 0 }
+.ts-side {
+  position: sticky; top: var(--s3); max-height: calc(100vh - 2 * var(--s3)); overflow-y: auto;
+  display: flex; flex-direction: column; gap: var(--s3); min-width: 0; padding-bottom: var(--s2)
+}
+.side-stack { display: flex; flex-direction: column; gap: var(--s3) }
+.ts-side .box-hd { padding: var(--s2) var(--s3) }
+.ts-side .box-hd h3 { font-size: var(--t-md) }
+.ts-side .box-bd { padding: var(--s3) }
+.ts-side .fields { grid-template-columns: minmax(0, 1fr) }
+.pick-row { display: flex; align-items: center; gap: var(--s2) }
+.brgy-pick { flex: 1; min-width: 0; font-weight: 600 }
+ul.side-checks { list-style: none; margin: 0; padding: 0 }
+.side-checks li { display: flex; gap: var(--s2); padding: var(--s2) var(--s3); border-top: 1px solid var(--line); font-size: var(--t-sm) }
+.side-checks li:first-child { border-top: 0 }
+.side-checks .sev { flex: none; margin-top: 7px }
+.side-checks li.error .sev { background: var(--bad) }
+.side-checks .t { font-weight: 600; line-height: 1.35 }
+.side-checks .acts { display: flex; flex-wrap: wrap; gap: 2px var(--s3); font-size: var(--t-xs) }
+@media (max-width: 1100px) {
+  .tanod-screen { grid-template-columns: minmax(0, 1fr) }
+  .ts-side { position: static; max-height: none; overflow: visible }
+}
+
+/* ---------- Help as tooltips: an "i" beside a title ---------- */
+.tip { position: relative; display: inline-flex; vertical-align: middle; margin-left: var(--s2) }
+.tip-btn {
+  width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--surface); color: var(--muted);
+  font: italic 700 13px/1 Georgia, 'Times New Roman', serif; cursor: help; padding: 0; display: grid; place-items: center
+}
+.tip-btn:hover, .tip-btn:focus-visible { border-color: var(--accent); color: var(--accent) }
+.tip-body {
+  position: absolute; top: calc(100% + 8px); left: -8px; z-index: 40; width: max-content; max-width: min(340px, 80vw);
+  padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--ink); color: var(--bg); box-shadow: var(--shadow);
+  font-size: var(--t-sm); font-weight: 500; line-height: 1.45; letter-spacing: 0; text-transform: none; white-space: normal; text-align: left;
+  visibility: hidden; opacity: 0; transition: opacity .12s, visibility .12s; pointer-events: none
+}
+.tip:hover .tip-body, .tip:focus-within .tip-body { visibility: visible; opacity: 1 }
+/* Near the right edge (the side panel, box headers' right side), open towards the left. */
+.ts-side .tip-body, .box-hd .r .tip-body { left: auto; right: -8px }
+@media print { .tip { display: none } }
+.admin-acts { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center }
+.admin-acts select { width: auto; max-width: 100% }
+.acct-q { width: 260px; max-width: 100% }
+.su-as { display: grid; gap: var(--s2) }
+.su-as legend { margin-bottom: var(--s1) }
+.su-as .reason { align-items: flex-start }
+.su-as .reason input { margin-top: 3px }
+.su-as .reason span { display: flex; flex-direction: column; gap: 2px }
+.su-as .reason small { font-weight: 500; color: var(--muted); font-size: var(--t-sm) }
+
+/* ---------- ID photocopy for signing (paper) ---------- */
+.idcopy .id-who { display: flex; flex-wrap: wrap; gap: 8px 40px; margin-top: 26px; font-size: 13px }
+.idcopy .id-who u { font-weight: 700; text-underline-offset: 3px }
+.id-sides { display: grid; grid-template-columns: 1fr 1fr; gap: .3in; margin-top: 22px }
+.id-side { margin: 0; text-align: center; font-size: 11px }
+.id-frame { height: 2.35in; border: 1px solid var(--paper-ink); display: grid; place-items: center; overflow: hidden }
+.id-frame img { width: 100%; height: 100%; object-fit: contain }
+.id-attach { color: #666; font-size: 12px; padding: 0 12px; border: 1.5px dashed #999; margin: 10px; align-self: stretch; justify-self: stretch; display: grid; place-items: center }
+.id-side figcaption { margin-top: 4px }
+.id-sigs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; margin-top: 1in; font-size: 11px; text-align: center }
+.id-sigs .nm { border-bottom: 1px solid var(--paper-ink); min-height: 18px; font-weight: 700; text-transform: uppercase; padding-top: 34px }
+
+/* ---------- Tanod list, editable: ✓ saves a row, the trash can deletes it ---------- */
+.rrow.edit {
+  grid-template-columns: 34px minmax(0, 1.3fr) minmax(0, 1.3fr) 56px 76px minmax(130px, 1fr) 92px 40px 40px;
+  grid-template-areas: "no last first mi sfx pos ids save del" "no note note note note note note note note";
+  border-left: 4px solid transparent;
+}
+.rrow > .c-save { grid-area: save }
+.rrow.edit.err { background: var(--bad-soft); border-left-color: var(--bad) }
+.rrow.edit.warnf { background: var(--warn-soft); border-left-color: var(--warn) }
+.rrow.edit.dirty { box-shadow: inset 0 0 0 2px var(--accent) }
+.rrow.edit.focus { animation: row-flash 2.6s ease-out; outline: 3px solid var(--accent); outline-offset: -3px }
+.id-signed { display: flex; align-items: center; gap: 6px; font-size: var(--t-sm); font-weight: 600; cursor: pointer; white-space: nowrap }
+.id-signed input { width: 20px; height: 20px; min-height: 0; accent-color: var(--accent) }
+.iconbtn.save { color: var(--muted) }
+.iconbtn.save.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent) }
+.iconbtn.save:disabled { opacity: .35; cursor: default }
+.iconbtn.del { color: var(--bad) }
+.rrow.edit .c-note { font-size: var(--t-sm) }
+.rrow.edit .c-note .unsaved { color: var(--accent); font-weight: 700 }
+.rrow.edit .c-note .warn, .rrow.edit .c-note .error { font-weight: 600 }
+/* Medium width (the list beside the side panel): two lines per tanod. */
+@container (max-width: 780px) {
+  .rrow.edit {
+    grid-template-columns: 26px minmax(0, 1.3fr) minmax(0, 1.3fr) 58px 76px 40px 40px;
+    grid-template-areas: "no last first mi sfx save del" "no pos pos ids ids ids ids" "no note note note note note note";
+    row-gap: 6px; padding-block: 8px;
+  }
+  .rrow.rhead.edit { display: grid; grid-template-areas: "no last first mi sfx save del"; padding-block: var(--s2) }
+  .rrow.rhead.edit > .c-pos, .rrow.rhead.edit > .c-ids { display: none }
+  .rrow.edit .c-note { margin-top: 0 }
+}
+/* Phones: names on their own line. */
+@container (max-width: 480px) {
+  .rrow.edit {
+    grid-template-columns: 26px repeat(4, minmax(0, 1fr)) 40px 40px;
+    grid-template-areas: "no last last first first first first" "no mi sfx save del . ." "no pos pos pos ids ids ids" "no note note note note note note";
+  }
+  .rrow.rhead.edit { display: none }
+}
+
+/* ---------- Secretary: Barangay details, and Check before printing ---------- */
+dl.facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--s2) var(--s4); margin: 0; font-size: var(--t-sm) }
+dl.facts dt { color: var(--muted) }
+dl.facts dd { margin: 0; font-weight: 600 }
+ul.doc-links { list-style: none; margin: 0; padding: var(--s3) var(--s4); display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--s2) }
+.doc-links a { display: block; padding: var(--s3); border: 1px solid var(--line-strong); border-radius: var(--r-sm); font-weight: 600; color: var(--accent); text-decoration: none }
+.doc-links a:hover { background: var(--accent-soft) }
+.doc-table-wrap { overflow-x: auto }
+table.doc-table { width: 100%; border-collapse: collapse; font-size: var(--t-sm) }
+.doc-table th { text-align: left; font-size: var(--t-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); white-space: nowrap }
+.doc-table td { padding: var(--s2) var(--s3); border-top: 1px solid var(--line); vertical-align: top }
+.doc-table tr.err td:first-child { box-shadow: inset 4px 0 var(--bad) }
+.doc-table tr.warnf td:first-child { box-shadow: inset 4px 0 var(--warn) }
+.doc-table td.dc { white-space: nowrap; font-weight: 600 }
+.dc-mark { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 800 }
+.dc.ok .dc-mark { background: var(--ok-soft); color: var(--ok) }
+.dc.warn .dc-mark { background: var(--warn-soft); color: var(--warn) }
+.dc.bad .dc-mark { background: var(--bad-soft); color: var(--bad) }
+.dc.idle { color: var(--muted); font-weight: 500 }
+.dc.idle .dc-mark { background: var(--sunk); color: var(--muted) }
+.doc-table td.fix { min-width: 240px }
+.doc-table td.fix ul { margin: 0 0 4px; padding-left: 16px }
+.doc-table td.fix li.error { color: var(--bad) }
+.doc-table td.fix li.warn { color: var(--warn) }

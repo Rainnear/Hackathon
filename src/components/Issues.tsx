@@ -1,8 +1,10 @@
+import { useAuth } from '../state/auth'
 import { useStore } from '../state/store'
 import { href, navigate } from '../state/route'
 import { toast } from '../state/toast'
 import { matchesFilter, type Analysis } from '../domain/analyze'
 import type { Issue } from '../domain/types'
+import { issueTarget } from '../state/goTo'
 
 async function copyText(text: string) {
   try {
@@ -21,7 +23,7 @@ async function copyText(text: string) {
 }
 
 /** Copy the reminder, and on phones open the SMS app addressed to the barangay focal person. */
-export function SmsActions({ text, brgy, compact = false }: { text: string; brgy: string | null; compact?: boolean }) {
+export function SmsActions({ text, brgy, compact = false, lead = true }: { text: string; brgy: string | null; compact?: boolean; lead?: boolean }) {
   const focal = useStore((s) => s.sub.brgys.find((b) => b.name === brgy)?.focal)
   const phone = focal?.phone.replace(/[^\d+]/g, '') ?? ''
   const who = focal?.name || focal?.phone
@@ -32,7 +34,7 @@ export function SmsActions({ text, brgy, compact = false }: { text: string; brgy
   if (compact)
     return (
       <>
-        {' · '}
+        {lead && ' · '}
         <button type="button" className="linkbtn" onClick={copy}>Copy SMS</button>
         {phone && <> · <a className="linkbtn" href={`sms:${phone}?body=${encodeURIComponent(text)}`}>Text {focal?.name || 'focal person'}</a></>}
       </>
@@ -48,13 +50,17 @@ export function SmsActions({ text, brgy, compact = false }: { text: string; brgy
 export function IssueItem({ issue, where, A }: { issue: Issue; where: 'review' | 'local'; A: Analysis }) {
   const sub = useStore((s) => s.sub)
   const setFilter = useStore((s) => s.setFilter)
+  // Setup is the Liga Rep's page; the provincial office doesn't open it.
+  const isAdmin = useAuth((s) => s.profile?.role === 'admin')
   const showEmpty = () => {
     setFilter('empty')
     const first = sub.brgys.find((b) => matchesFilter('empty', A.status[b.name].tone))
     navigate({ page: 'barangays', brgy: first?.name ?? null })
   }
   const nav = where === 'review' && !issue.brgy
-  const hasActs = issue.sms || (nav && (issue.kind === 'setup' || issue.kind === 'empty'))
+  // A tanod's row, or another barangay: worth a button. (Setup and "Show them" have their own.)
+  const target = issue.rows ? issueTarget(issue, sub) : issue.brgy && where === 'review' ? issueTarget(issue, sub) : null
+  const hasActs = issue.sms || target || (nav && (issue.kind === 'setup' || issue.kind === 'empty'))
   return (
     <li className={`issue ${issue.level}`}>
       <span className="sev" title={issue.level === 'error' ? 'Blocks printing' : 'Needs a check'} />
@@ -63,7 +69,8 @@ export function IssueItem({ issue, where, A }: { issue: Issue; where: 'review' |
         {issue.why && <div className="w">{issue.why}</div>}
         {hasActs && (
           <div className="acts">
-            {nav && issue.kind === 'setup' && <a className="btn sm" href={href({ page: 'setup' })}>Open Setup</a>}
+            {target && <a className="btn sm primary" href={href(target)}>Go to it</a>}
+            {nav && issue.kind === 'setup' && !isAdmin && <a className="btn sm" href={href({ page: 'setup' })}>Open Setup</a>}
             {nav && issue.kind === 'empty' && <button type="button" className="btn sm" onClick={showEmpty}>Show them</button>}
             {issue.sms && <SmsActions text={issue.sms} brgy={issue.brgy} />}
           </div>

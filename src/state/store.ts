@@ -5,7 +5,7 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
 
 import { findMunicipality } from '../data/municipalities'
 import { newSubmission, normalizeSubmission } from '../domain/submission'
-import type { Barangay, Departure, DocKey, Filter, Focal, ObrKey, SignatoryKey, Submission, Tanod } from '../domain/types'
+import type { Barangay, Departure, DocKey, Filter, Focal, ObrKey, Officials, SignatoryKey, Submission, Tanod } from '../domain/types'
 
 // IndexedDB keeps the data on this device and survives restarts; localStorage is smaller and cleared more readily.
 const idbStorage: StateStorage = {
@@ -79,11 +79,12 @@ interface SaktoState {
   pending: Pending
   previous: Previous | null
 
-  setSubmissionField: (patch: Partial<Pick<Submission, 'amount'>>) => void
+  setSubmissionField: (patch: Partial<Pick<Submission, 'amount' | 'barangayDue'>>) => void
   setSignatory: (key: SignatoryKey, value: string) => void
   setObr: (key: ObrKey, value: string) => void
   setDoc: (brgy: string, key: DocKey, value: boolean) => void
   setFocal: (brgy: string, key: keyof Focal, value: string) => void
+  setOfficial: (brgy: string, key: keyof Officials, value: string) => void
   updateTanod: (brgy: string, id: string, patch: Partial<Tanod>) => void
   addTanods: (brgy: string, tanods: Tanod[]) => void
   removeTanod: (brgy: string, id: string) => { index: number; tanod: Tanod } | null
@@ -94,6 +95,8 @@ interface SaktoState {
   removeWithReason: (brgy: string, id: string, d: Omit<Departure, 'tanodId'>) => { index: number; tanod: Tanod } | null
   /** Fills empty barangays with last year's tanods: the same people, signatures reset for the new year. */
   copyPrevious: (brgys: string[]) => number
+  /** A limit Supabase has already saved (set_tanod_limit), so nothing is queued for upload. */
+  applyLimit: (brgy: string, limit: number) => void
   /** Local-only replace, for the device copy before anything is online (sample data, erase). */
   replaceSubmission: (sub: Submission) => void
   setFilter: (f: Filter) => void
@@ -141,6 +144,8 @@ export const useStore = create<SaktoState>()(
           ),
         setFocal: (brgy, key, value) =>
           edit((s) => mapBrgy(s, brgy, (b) => ({ ...b, focal: { ...b.focal, [key]: value } })), (p) => (p.reqs[brgy] = stamp())),
+        setOfficial: (brgy, key, value) =>
+          edit((s) => mapBrgy(s, brgy, (b) => ({ ...b, officials: { ...b.officials, [key]: value } })), (p) => (p.reqs[brgy] = stamp())),
         updateTanod: (brgy, id, patch) =>
           edit(
             (s) => mapBrgy(s, brgy, (b) => ({ ...b, tanods: b.tanods.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
@@ -251,6 +256,7 @@ export const useStore = create<SaktoState>()(
           }
           return n
         },
+        applyLimit: (name, limit) => setState((st) => ({ sub: mapBrgy(st.sub, name, (b) => ({ ...b, limit })) })),
         replaceSubmission: (sub) => setState({ sub, filter: 'all', lastBrgy: null }),
         setFilter: (filter) => setState({ filter }),
         setLastBrgy: (lastBrgy) => setState({ lastBrgy }),

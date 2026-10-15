@@ -8,6 +8,7 @@ export const blankBarangay = (name: string, limit: number): Barangay => ({
   tanods: [],
   docs: { cert: false, designation: false, viaRep: false, spa: false },
   focal: { name: '', phone: '' },
+  officials: { captain: '', secretary: '' },
   left: [],
 })
 
@@ -24,6 +25,8 @@ export function newSubmission(muni: MunicipalityRef, year: number): Submission {
     sig: blankSignatories(),
     obr: { no: '', payee: '', amount: '' },
     brgys: muni.barangays.map(([name, limit]) => blankBarangay(name, limit)),
+    barangayDue: '',
+    provinceDue: '',
   }
 }
 
@@ -112,17 +115,21 @@ export function normalizeSubmission(raw: unknown): Submission | null {
     amount: Math.max(MIN_AMOUNT, Number(raw.amount) || MIN_AMOUNT),
     sig: Object.fromEntries(Object.entries(base.sig).map(([k, v]) => [k, typeof sig[k] === 'string' ? sig[k] : v])) as unknown as Signatories,
     obr: { no: str(obr.no), payee: str(obr.payee), amount: str(obr.amount) },
+    barangayDue: str(raw.barangayDue),
+    provinceDue: str(raw.provinceDue),
     // Barangays and limits always come from the reference list; saved rosters attach by name.
     brgys: base.brgys.map((b) => {
       const s = byName.get(b.name)
       if (!s) return b
       const docs = isObj(s.docs) ? s.docs : {}
       const focal = isObj(s.focal) ? s.focal : {}
+      const officials = isObj(s.officials) ? s.officials : {}
       return {
         ...b,
         tanods: Array.isArray(s.tanods) ? s.tanods.map(toTanod).filter((t): t is Tanod => !!t) : [],
         docs: { cert: !!docs.cert, designation: !!docs.designation, viaRep: !!docs.viaRep, spa: !!docs.spa },
         focal: { name: str(focal.name), phone: str(focal.phone) },
+        officials: { captain: str(officials.captain), secretary: str(officials.secretary) },
         left: Array.isArray(s.left) ? s.left.filter(isObj).flatMap(toDeparture) : [],
       }
     }),

@@ -5,6 +5,8 @@ import { useStore, waitingCount } from './store'
 export function useEditable() {
   const role = useAuth((s) => s.profile?.role)
   const status = useStore((s) => s.remote?.status)
+  // The provincial office views each municipality read-only (it changes only tanod limits, separately).
+  if (role === 'admin') return false
   if (!status || status === 'open') return true
   return status === 'submitted' && role !== 'secretary'
 }

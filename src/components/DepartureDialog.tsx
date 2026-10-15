@@ -4,12 +4,15 @@ import { fullName } from '../domain/format'
 import { DEPARTURE_REASONS, type DepartureReason, type Tanod } from '../domain/types'
 import { Modal } from './Modal'
 
+/** Why a row is deleted: a real departure (kept in the tanod records), or a row added by mistake. */
+export type DeleteReason = DepartureReason | 'mistake'
+
 /**
- * Removing someone who was on last year's list asks why, so the barangay keeps a record of who
- * resigned, was removed, passed away or moved. "Cancel" covers a removal by mistake.
+ * Deleting a tanod asks why first. Resigned, AWOL, contract ended and the rest are kept in the
+ * barangay's tanod records; "Added by mistake" just removes the row and keeps no record.
  */
-export function DepartureDialog({ tanod, year, onConfirm, onCancel }: { tanod: Tanod | null; year: number; onConfirm: (reason: DepartureReason, note: string) => void; onCancel: () => void }) {
-  const [reason, setReason] = useState<DepartureReason | null>(null)
+export function DepartureDialog({ tanod, year, onConfirm, onCancel }: { tanod: Tanod | null; year: number; onConfirm: (reason: DeleteReason, note: string) => void; onCancel: () => void }) {
+  const [reason, setReason] = useState<DeleteReason | null>(null)
   const [note, setNote] = useState('')
   const close = () => {
     setReason(null)
@@ -17,37 +20,42 @@ export function DepartureDialog({ tanod, year, onConfirm, onCancel }: { tanod: T
     onCancel()
   }
   const name = tanod ? fullName(tanod) || 'this tanod' : ''
+  const choices: { value: DeleteReason; label: string }[] = [...DEPARTURE_REASONS, { value: 'mistake', label: 'Added by mistake' }]
   return (
-    <Modal open={!!tanod} onClose={close} title={`Why is ${name} not continuing?`}>
+    <Modal open={!!tanod} onClose={close} title={`Delete ${name}?`}>
       <div className="modal-bd stack">
-        <p>{name} was a tanod last year. Choose the reason they are not on the CY {year} list. It is kept in the barangay's tanod records.</p>
+        <p>Why is {name} no longer a tanod for CY {year}? The reason is kept in the barangay's tanod records.</p>
         <fieldset className="plain reasons">
           <legend className="sr-only">Reason</legend>
-          {DEPARTURE_REASONS.map((r) => (
+          {choices.map((r) => (
             <label key={r.value} className={`reason ${reason === r.value ? 'on' : ''}`}>
               <input type="radio" name="reason" value={r.value} checked={reason === r.value} onChange={() => setReason(r.value)} />
               {r.label}
             </label>
           ))}
         </fieldset>
-        <div className="field">
-          <label htmlFor="dep_note">Note {reason === 'other' ? '(say what happened)' : '(optional)'}</label>
-          <input id="dep_note" value={note} maxLength={500} autoComplete="off" placeholder="For example: moved to Iloilo City for work" onChange={(e) => setNote(e.target.value)} />
-        </div>
+        {reason === 'mistake' ? (
+          <p className="note">The row is removed and no record is kept, for a duplicate or a wrong entry.</p>
+        ) : (
+          <div className="field">
+            <label htmlFor="dep_note">Note {reason === 'other' ? '(say what happened)' : '(optional)'}</label>
+            <input id="dep_note" value={note} maxLength={500} autoComplete="off" placeholder="For example: stopped reporting for duty in March" onChange={(e) => setNote(e.target.value)} />
+          </div>
+        )}
       </div>
       <div className="modal-ft">
         <button type="button" className="btn" onClick={close}>Cancel, keep them</button>
         <button
           type="button"
-          className="btn primary big"
+          className="btn danger big"
           disabled={!reason || (reason === 'other' && !note.trim())}
           onClick={() => {
-            onConfirm(reason!, note.trim())
+            onConfirm(reason!, reason === 'mistake' ? '' : note.trim())
             setReason(null)
             setNote('')
           }}
         >
-          Remove from CY {year}
+          Delete
         </button>
       </div>
     </Modal>

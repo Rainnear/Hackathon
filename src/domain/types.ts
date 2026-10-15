@@ -32,8 +32,16 @@ export interface Focal {
   phone: string
 }
 
+/** Who signs for the barangay: the Punong Barangay, and the secretary who prepares the papers. */
+export interface Officials {
+  captain: string
+  secretary: string
+}
+
 export const DEPARTURE_REASONS = [
   { value: 'resigned', label: 'Resigned' },
+  { value: 'awol', label: 'AWOL' },
+  { value: 'contract_ended', label: 'Contract ended' },
   { value: 'removed', label: 'Removed' },
   { value: 'deceased', label: 'Passed away' },
   { value: 'moved', label: 'Moved away' },
@@ -56,6 +64,7 @@ export interface Barangay {
   tanods: Tanod[]
   docs: BarangayDocs
   focal: Focal
+  officials: Officials
   /** Last year's tanods who did not continue this year. */
   left: Departure[]
 }
@@ -87,10 +96,15 @@ export interface Submission {
   sig: Signatories
   obr: Obr
   brgys: Barangay[]
+  /** When barangays must submit to the Liga Rep (yyyy-mm-dd, set by the Rep); '' if not set. */
+  barangayDue: string
+  /** When the municipality must submit to the province (yyyy-mm-dd, set by the provincial office); '' if not set. */
+  provinceDue: string
 }
 
 export type Level = 'error' | 'warn'
-export type IssueKind = 'limit' | 'name' | 'ids' | 'dup' | 'similar' | 'doc' | 'empty' | 'setup' | 'obr'
+/** 'check' is advice (a possible misspelling, a missing middle initial): shown and highlighted, but never blocks "Ready". */
+export type IssueKind = 'limit' | 'name' | 'ids' | 'dup' | 'similar' | 'check' | 'doc' | 'empty' | 'setup' | 'obr'
 
 export interface Issue {
   level: Level
@@ -122,3 +136,5 @@ export interface BarangayStatus {
 
 export type Filter = 'all' | 'todo' | 'ready' | 'empty'
 export type DocView = 'masterlist' | 'payroll' | 'cover'
+/** A form on the Templates page: the submission documents plus the Punong Barangay's certification. */
+export type TemplateId = DocView | 'certification' | 'idcopy'

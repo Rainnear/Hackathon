@@ -1,16 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type KeyboardEvent } from 'react'
 
 import { Icon } from '../components/icons'
 import { Box, Chip, CommitInput, NextStep } from '../components/ui'
-import { IssueItem, SmsActions } from '../components/Issues'
-import { FILTERS, matchesFilter, type Analysis } from '../domain/analyze'
+import { SmsActions } from '../components/Issues'
+import { issueTarget } from '../state/goTo'
+import { TanodDialog } from '../components/TanodDialog'
+import type { Analysis } from '../domain/analyze'
 import { clean, cleanMI, fullName, plural } from '../domain/format'
-import { blankTanod } from '../domain/submission'
-import { POSITIONS, SUFFIXES, type Barangay, type DocKey, type Position, type RowNote, type Suffix, type Tanod } from '../domain/types'
+import { POSITIONS, SUFFIXES, type Barangay, type DocKey, type Issue, type Position, type RowNote, type Suffix, type Tanod } from '../domain/types'
 import { href, navigate } from '../state/route'
 import { DocPhoto, ScanUpload } from '../components/ScanUpload'
 import { IdPhotosButton, ScansWaiting } from '../components/ScanReview'
 import { DepartureDialog } from '../components/DepartureDialog'
+import { TanodLimit } from '../components/TanodLimit'
 import { NavIcon } from '../components/icons'
 import { useEditable } from '../state/access'
 import { useScans } from '../state/scans'
@@ -18,175 +20,150 @@ import { useAuth } from '../state/auth'
 import { useStore } from '../state/store'
 import { toast } from '../state/toast'
 
-function Rail({ A, current }: { A: Analysis; current: string }) {
+/** Liga Rep: which barangay, grouped the way the dashboard counts them. */
+function BarangayPicker({ A, current }: { A: Analysis; current: string }) {
   const brgys = useStore((s) => s.sub.brgys)
-  const filter = useStore((s) => s.filter)
-  const setFilter = useStore((s) => s.setFilter)
-  const shown = brgys.filter((b) => matchesFilter(filter, A.status[b.name].tone))
-
-  const pick = (f: typeof filter) => {
-    setFilter(f)
-    // Jump to the first barangay in the group, so the editor matches what the list shows.
-    if (!matchesFilter(f, A.status[current].tone)) {
-      const first = brgys.find((b) => matchesFilter(f, A.status[b.name].tone))
-      if (first) navigate({ page: 'barangays', brgy: first.name }, { replace: true, scroll: false })
-    }
-  }
-
+  const groups: { label: string; tone: string }[] = [
+    { label: 'Has problems', tone: 'bad' },
+    { label: 'Check names', tone: 'warn' },
+    { label: 'Not started', tone: 'idle' },
+    { label: 'Ready', tone: 'ok' },
+  ]
   return (
-    <aside className="box rail" aria-label="Barangays">
-      <div className="rail-hd">
-        <div className="seg sm" role="group" aria-label="Show barangays">
-          {FILTERS.map((f) => (
-            <button key={f.value} type="button" aria-pressed={filter === f.value} onClick={() => pick(f.value)}>
-              {f.label} <span className="num">{brgys.filter((b) => matchesFilter(f.value, A.status[b.name].tone)).length}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="rail-list">
-        {shown.length ? (
-          shown.map((b) => {
-            const st = A.status[b.name]
-            const n = b.tanods.length
-            return (
-              <a key={b.name} className="brow" href={href({ page: 'barangays', brgy: b.name })} aria-current={b.name === current ? 'true' : undefined}>
-                <span className="bn">{b.name}</span>
-                <Chip tone={st.tone}>{st.label}</Chip>
-                <span className="bm">
-                  <span className="bar">
-                    <i className={n > b.limit ? 'over' : ''} style={{ width: `${Math.min(100, (n / b.limit) * 100)}%` }} />
-                  </span>
-                  <span className="num">{n}/{b.limit}</span>
-                </span>
-              </a>
-            )
-          })
-        ) : (
-          <p className="empty">No barangays in this group.</p>
-        )}
-      </div>
-    </aside>
+    <select
+      className="brgy-pick"
+      aria-label="Barangay"
+      value={current}
+      onChange={(e) => navigate({ page: 'barangays', brgy: e.target.value }, { scroll: false })}
+    >
+      {groups.map((g) => {
+        const list = brgys.filter((b) => A.status[b.name].tone === g.tone)
+        return list.length ? (
+          <optgroup key={g.tone} label={`${g.label} (${list.length})`}>
+            {list.map((b) => (
+              <option key={b.name} value={b.name}>
+                {b.name} · {b.tanods.length}/{b.limit}
+              </option>
+            ))}
+          </optgroup>
+        ) : null
+      })}
+    </select>
   )
 }
 
-const nameClass = (ns: RowNote[] | undefined) => {
+/** How a row is marked: red for something that must be fixed, amber for something to check. */
+const rowLevel = (ns: RowNote[] | undefined) => {
   const x = (ns ?? []).filter((n) => n.kind !== 'ids')
   return x.some((n) => n.level === 'error') ? 'err' : x.length ? 'warnf' : ''
 }
 
-function RosterRow({ t, award, notes, brgy, autoFocus, onRemove }: { t: Tanod; award: number; notes?: RowNote[]; brgy: string; autoFocus: boolean; onRemove: () => void }) {
+type RowDraft = Pick<Tanod, 'last' | 'first' | 'mi' | 'suffix' | 'pos'>
+const draftOf = (t: Tanod): RowDraft => ({ last: t.last, first: t.first, mi: t.mi, suffix: t.suffix, pos: t.pos })
+
+/**
+ * One tanod, editable in place: fix a misspelling or add a missing M.I., then ✓ saves it (Enter works
+ * too, Esc undoes). The trash can asks why before deleting. "ID signed" saves as soon as it's ticked.
+ */
+function RosterRow({ t, award, notes, solo, brgy, onRemove }: { t: Tanod; award: number; notes?: RowNote[]; solo: boolean; brgy: string; onRemove: () => void }) {
   const updateTanod = useStore((s) => s.updateTanod)
-  const set = (patch: Partial<Tanod>) => updateTanod(brgy, t.id, patch)
-  const nc = nameClass(notes)
   const hasId = useScans((s) => s.list.some((x) => x.tanod_id === t.id && x.status === 'saved'))
+  const [v, setV] = useState<RowDraft>(() => draftOf(t))
+  const set = (patch: Partial<RowDraft>) => setV((x) => ({ ...x, ...patch }))
+  const dirty = (Object.keys(v) as (keyof RowDraft)[]).some((k) => v[k] !== t[k])
+  const name = fullName(t) || 'this tanod'
   const p = `f_${t.id}_`
+
+  const save = () => {
+    if (!dirty) return
+    if (!clean(v.last) || !clean(v.first)) return toast('Type both the last name and the first name before saving.')
+    const next = { ...v, last: clean(v.last), first: clean(v.first), mi: cleanMI(v.mi) }
+    updateTanod(brgy, t.id, next)
+    toast(`${fullName({ ...t, ...next })} saved.`)
+  }
+  const keys = (e: KeyboardEvent<HTMLInputElement | HTMLSelectElement>) => {
+    if (e.key === 'Enter') save()
+    if (e.key === 'Escape') setV(draftOf(t))
+  }
+
   return (
-    <div className="rrow">
+    <div className={`rrow edit ${rowLevel(notes)} ${dirty ? 'dirty' : ''}`} id={`row_${t.id}`}>
       <span className="c-no num">{award}</span>
-      <input className={`c-last upper ${nc}`} id={p + 'last'} value={t.last} placeholder="Last name" aria-label="Last name" autoComplete="off" autoFocus={autoFocus}
-        onChange={(e) => set({ last: e.target.value })} onBlur={(e) => set({ last: clean(e.target.value) })} />
-      <input className={`c-first upper ${nc}`} id={p + 'first'} value={t.first} placeholder="First name" aria-label="First name" autoComplete="off"
-        onChange={(e) => set({ first: e.target.value })} onBlur={(e) => set({ first: clean(e.target.value) })} />
-      <input className="c-mi upper" id={p + 'mi'} value={t.mi} placeholder="M.I." aria-label="Middle initial" maxLength={3} autoComplete="off"
-        onChange={(e) => set({ mi: e.target.value })} onBlur={(e) => set({ mi: cleanMI(e.target.value) })} />
-      <select className="c-sfx" id={p + 'suffix'} value={t.suffix} aria-label="Suffix" onChange={(e) => set({ suffix: e.target.value as Suffix })}>
+      <input className="c-last upper" id={p + 'last'} value={v.last} placeholder="Last name" aria-label={`Last name, row ${award}`} autoComplete="off"
+        onChange={(e) => set({ last: e.target.value })} onKeyDown={keys} />
+      <input className="c-first upper" id={p + 'first'} value={v.first} placeholder="First name" aria-label={`First name, row ${award}`} autoComplete="off"
+        onChange={(e) => set({ first: e.target.value })} onKeyDown={keys} />
+      <input className="c-mi upper" id={p + 'mi'} value={v.mi} placeholder="M.I." aria-label={`Middle initial, row ${award}`} maxLength={3} autoComplete="off"
+        onChange={(e) => set({ mi: e.target.value })} onKeyDown={keys} />
+      <select className="c-sfx" id={p + 'suffix'} value={v.suffix} aria-label={`Suffix, row ${award}`} onChange={(e) => set({ suffix: e.target.value as Suffix })} onKeyDown={keys}>
         {SUFFIXES.map((s) => <option key={s} value={s}>{s || '—'}</option>)}
       </select>
-      <select className="c-pos" id={p + 'pos'} value={t.pos} aria-label="Position" onChange={(e) => set({ pos: e.target.value as Position })}>
+      <select className="c-pos" id={p + 'pos'} value={v.pos} aria-label={`Position, row ${award}`} onChange={(e) => set({ pos: e.target.value as Position })} onKeyDown={keys}>
         {POSITIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
-      <span className="c-ids ids" role="group" aria-label="Signatures on ID photocopy">
-        <span className="lbl">ID signatures</span>
-        {[1, 2, 3].map((k) => (
-          <button key={k} type="button" className={t.ids >= k ? 'on' : ''} aria-pressed={t.ids >= k} aria-label={`Signature ${k} of 3`}
-            onClick={() => set({ ids: t.ids === k ? k - 1 : k })}>
-            {k}
-          </button>
-        ))}
-      </span>
-      <button type="button" className="c-del iconbtn del" aria-label={`Remove ${fullName(t) || 'this row'}`} onClick={onRemove}>
-        {Icon.x}
+      <label className="c-ids id-signed" title="The ID photocopy has the tanod's 3 signatures">
+        <input type="checkbox" checked={t.ids >= 3} onChange={(e) => updateTanod(brgy, t.id, { ids: e.target.checked ? 3 : 0 })} />
+        <span>ID signed</span>
+      </label>
+      <button type="button" className={`c-save iconbtn save ${dirty ? 'on' : ''}`} onClick={save} disabled={!dirty}
+        aria-label={`Save changes to ${name}`} title={dirty ? 'Save changes' : 'No changes to save'}>
+        {Icon.check}
       </button>
-      {((notes && notes.length > 0) || hasId) && (
-        <div className="c-note">
-          {hasId && <IdPhotosButton tanodId={t.id} />}
-          {(notes ?? []).map((n, i) => (
-            <span key={i} className={n.level}>
-              {n.text}
-              {n.sms && <SmsActions compact text={n.sms} brgy={n.brgy} />}
-            </span>
-          ))}
-        </div>
-      )}
+      <button type="button" className="c-del iconbtn del" onClick={onRemove} aria-label={`Delete ${name}`} title="Delete">
+        {Icon.trash}
+      </button>
+      <div className="c-note">
+        {dirty && <span className="unsaved">Not saved yet: tap ✓ to save, or press Esc to undo.</span>}
+        {hasId && <IdPhotosButton tanodId={t.id} />}
+        <a className="linkbtn" href={href({ page: 'templates', doc: 'idcopy', brgy, tanod: t.id })}>Print ID for signing</a>
+        {(notes ?? []).map((n, i) => (
+          <span key={i} className={n.level}>
+            {n.text}
+            {n.sms && !solo && <SmsActions compact text={n.sms} brgy={n.brgy} />}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
 
-function parsePasted(text: string): Tanod[] {
-  return text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => {
-      const c = l.split(/\t|,/).map((x) => x.trim())
-      const sx = clean(c[3])
-      const suffix = (SUFFIXES as readonly string[]).includes(sx) ? sx : (SUFFIXES as readonly string[]).includes(sx + '.') ? sx + '.' : ''
-      return { ...blankTanod(), last: clean(c[0]), first: clean(c[1]), mi: cleanMI(c[2]), suffix: suffix as Suffix }
-    })
-}
-
 function Roster({ b, A, solo }: { b: Barangay; A: Analysis; solo: boolean }) {
-  const addTanods = useStore((s) => s.addTanods)
   const removeTanod = useStore((s) => s.removeTanod)
   const insertTanod = useStore((s) => s.insertTanod)
-  const [focusId, setFocusId] = useState<string | null>(null)
-  const [paste, setPaste] = useState('')
-  const [scanning, setScanning] = useState(false)
-  const [leaving, setLeaving] = useState<Tanod | null>(null)
   const removeWithReason = useStore((s) => s.removeWithReason)
-  const previous = useStore((s) => s.previous)
+  const [scanning, setScanning] = useState<'id' | 'list' | null>(null)
+  const [leaving, setLeaving] = useState<Tanod | null>(null)
+  const [adding, setAdding] = useState(false)
   const year = useStore((s) => s.sub.year)
-  const lastYearIds = new Set((previous?.brgys[b.name] ?? []).map((t) => t.id))
   const full = b.tanods.length >= b.limit
 
-  const add = () => {
-    const t = blankTanod()
-    addTanods(b.name, [t])
-    setFocusId(t.id)
-  }
   const undoable = (t: Tanod, gone: { index: number; tanod: Tanod } | null) => {
     if (gone)
-      toast(`Removed ${fullName(t) || 'the row'}.${solo ? '' : ' Award numbers were updated.'}`, {
+      toast(`Deleted ${fullName(t) || 'the row'}.${solo ? '' : ' Award numbers were updated.'}`, {
         label: 'Undo',
         run: () => insertTanod(b.name, gone.index, gone.tanod),
       })
-  }
-  // Someone carried over from last year: ask why they are leaving, for the tanod records.
-  const remove = (t: Tanod) => (lastYearIds.has(t.id) ? setLeaving(t) : undoable(t, removeTanod(b.name, t.id)))
-  const addPasted = () => {
-    const rows = parsePasted(paste)
-    if (!rows.length) return toast('Paste at least one line first.')
-    const room = Math.max(0, b.limit - b.tanods.length)
-    addTanods(b.name, rows.slice(0, room))
-    setPaste('')
-    const skipped = rows.length - Math.min(room, rows.length)
-    toast(`${plural(Math.min(room, rows.length), 'name')} added${skipped ? `. ${skipped} not added because the limit was reached` : ''}.`)
   }
 
   return (
     <Box
       title="Tanods"
+      tip={
+        solo
+          ? 'Check each name against the ID. Change a name or M.I. right in the list, then tap ✓ to save. The Liga Rep assigns the award numbers when the whole municipality is put together.'
+          : 'Change a name right in the list, then tap ✓ to save. Award numbers run across the whole municipality and update when rows are added or deleted.'
+      }
       aside={
         <div className="row">
-          <button type="button" className="btn" onClick={() => setScanning(true)}>{NavIcon.camera} Scan IDs</button>
-          <button type="button" className="btn primary" onClick={add} disabled={full}>
+          <button type="button" className="btn" onClick={() => setScanning('list')}>{NavIcon.records} Scan a list</button>
+          <button type="button" className="btn primary" onClick={() => setAdding(true)} disabled={full}>
             {full ? 'Limit reached' : 'Add tanod'}
           </button>
         </div>
       }
     >
-      <ScanUpload b={b} open={scanning} onClose={() => setScanning(false)} />
+      <ScanUpload key={scanning ?? 'closed'} b={b} mode={scanning ?? 'id'} open={!!scanning} onClose={() => setScanning(null)} />
+      {adding && <TanodDialog b={b} onClose={() => setAdding(false)} onScan={() => setScanning('id')} />}
       <DepartureDialog
         tanod={leaving}
         year={year}
@@ -194,36 +171,24 @@ function Roster({ b, A, solo }: { b: Barangay; A: Analysis; solo: boolean }) {
         onConfirm={(reason, note) => {
           const t = leaving!
           setLeaving(null)
-          undoable(t, removeWithReason(b.name, t.id, { name: fullName(t), reason, note }))
+          // A row added by mistake just goes; a real departure is kept in the tanod records.
+          undoable(t, reason === 'mistake' ? removeTanod(b.name, t.id) : removeWithReason(b.name, t.id, { name: fullName(t), reason, note }))
         }}
       />
-      <p className="box-sub note">
-        {solo
-          ? 'Type each tanod as written on their ID. The Tanod Rep assigns the award numbers when the whole municipality is put together.'
-          : 'Award numbers run across the whole municipality and update when rows are added or removed.'}
-      </p>
-      <div className="rrow rhead" aria-hidden="true">
+      <div className="rrow rhead edit" aria-hidden="true">
         <span className="c-no">No.</span><span className="c-last">Last name</span><span className="c-first">First name</span><span className="c-mi">M.I.</span>
-        <span className="c-sfx">Suffix</span><span className="c-pos">Position</span><span className="c-ids">ID signs</span><span className="c-del" />
+        <span className="c-sfx">Suffix</span><span className="c-pos">Position</span><span className="c-ids">ID</span><span className="c-save" /><span className="c-del" />
       </div>
       <div className="rows">
         {b.tanods.length ? (
           b.tanods.map((t, i) => (
-            <RosterRow key={t.id} t={t} award={solo ? i + 1 : A.awards[t.id]} notes={A.notes[t.id]} brgy={b.name} autoFocus={t.id === focusId} onRemove={() => remove(t)} />
+            // Keyed on the saved values, so a save (here or from another device) starts the row afresh.
+            <RosterRow key={`${t.id}|${t.last}|${t.first}|${t.mi}|${t.suffix}|${t.pos}`} t={t} award={solo ? i + 1 : A.awards[t.id]} notes={A.notes[t.id]}
+              solo={solo} brgy={b.name} onRemove={() => setLeaving(t)} />
           ))
         ) : (
-          <p className="empty">No tanods yet for Brgy. {b.name}.</p>
+          <p className="empty">No tanods yet for Brgy. {b.name}. Use Add tanod to scan their IDs or type them in, or Scan a list.</p>
         )}
-      </div>
-      <div className="box-ft">
-        <div className="field">
-          <label htmlFor="paste">Paste from Excel: one tanod per line, columns Last name, First name, M.I., Suffix</label>
-          <textarea id="paste" rows={3} value={paste} onChange={(e) => setPaste(e.target.value)} placeholder={'DELA CRUZ\tJUAN\tS\tJR.'} />
-        </div>
-        <div className="row">
-          <button type="button" className="btn" onClick={addPasted}>Add pasted names</button>
-          <span className="note">Names are capitalized and cleaned up. Rows past the limit are not added.</span>
-        </div>
       </div>
     </Box>
   )
@@ -248,7 +213,7 @@ function CopyLastYear({ b }: { b: Barangay }) {
   )
 }
 
-/** Tanod Rep: copy last year's list into every barangay that hasn't started this year. */
+/** Liga Rep: copy last year's list into every barangay that hasn't started this year. */
 function CopyAllBarangays() {
   const previous = useStore((s) => s.previous)
   const brgys = useStore((s) => s.sub.brgys)
@@ -296,17 +261,17 @@ function Requirements({ b }: { b: Barangay }) {
   const done = b.tanods.filter((t) => t.ids >= 3).length
   const idsOK = n > 0 && done === n
   return (
-    <Box title="Requirements" aside={<span className="note">Tick what you have received</span>}>
+    <Box title="Requirements" tip="Tick each document once you have received it. Attach a photo of it if you can.">
       <div className="box-bd">
         <DocCheck b={b} k="cert" label="Barangay Certification" hint="Signed by the Punong Barangay" />
         <p className="cert-link">
-          <a className="linkbtn" href={href({ page: 'certificate', brgy: b.name })}>Print the certification form, filled in with this list</a>
+          <a className="linkbtn" href={href({ page: 'templates', doc: 'certification', brgy: b.name })}>Print the certification form, filled in with this list</a>
         </p>
         <div className="check">
           <span className={`dot ${idsOK ? 'ok' : 'bad'}`} aria-hidden="true">{idsOK ? '✓' : '!'}</span>
           <span>
             ID photocopies, 3 signatures each
-            <small>{n ? `${done} of ${n} complete. Set them per tanod in the ID signatures column.` : 'Add tanods first.'}</small>
+            <small>{n ? `${done} of ${n} signed. Tick "ID signed" on each row. Print them from Templates.` : 'Add tanods first.'}</small>
           </span>
         </div>
         <DocCheck b={b} k="designation" label="Proof of designation of the authorized representative" hint="The representative can change every year" />
@@ -320,7 +285,7 @@ function Requirements({ b }: { b: Barangay }) {
 function FocalPerson({ b }: { b: Barangay }) {
   const setFocal = useStore((s) => s.setFocal)
   return (
-    <Box title="Barangay focal person" aside={<span className="note">Gets the SMS reminders</span>}>
+    <Box title="Barangay focal person" tip="The person who gets the SMS reminders about this barangay's list.">
       <div className="box-bd fields">
         <div className="field">
           <label htmlFor="fName">Name</label>
@@ -335,31 +300,40 @@ function FocalPerson({ b }: { b: Barangay }) {
   )
 }
 
-function Attention({ b, A }: { b: Barangay; A: Analysis }) {
-  if (!b.tanods.length) return <div className="banner">Not started. Add tanods one by one, or paste the list from Excel at the bottom of the table.</div>
-  const general = A.issues.filter((i) => i.brgy === b.name && !i.rows)
-  const flagged = b.tanods.filter((t) => A.notes[t.id])
-  if (!general.length && !flagged.length) return <div className="banner ok">Ready. Everything for Brgy. {b.name} checks out.</div>
-  const rowLevel = flagged.some((t) => A.notes[t.id].some((n) => n.level === 'error')) ? 'error' : 'warn'
+/** The right-hand panel: every problem in this barangay, worst first, each with "Go to it" when it is about a row. */
+function SideChecks({ b, A }: { b: Barangay; A: Analysis }) {
+  const sub = useStore((s) => s.sub)
+  // Reminders by SMS are for the Liga Rep to send to barangays, not for the barangay's own secretary.
+  const solo = useAuth((s) => s.profile?.role === 'secretary')
+  if (!b.tanods.length) return null
+  const rank = (i: Issue) => (i.level === 'error' ? 0 : i.kind === 'check' ? 2 : 1)
+  const mine = A.issues.filter((i) => i.brgy === b.name || i.also === b.name).sort((x, y) => rank(x) - rank(y))
+  const errs = mine.filter((i) => i.level === 'error').length
   return (
-    <Box title="Needs attention">
-      <ul className="issues">
-        {general.map((i, ix) => <IssueItem key={ix} issue={i} where="local" A={A} />)}
-        {flagged.length > 0 && (
-          <li className={`issue ${rowLevel}`}>
-            <span className="sev" />
-            <div>
-              <div className="t">{plural(flagged.length, 'row')} in the list below {flagged.length === 1 ? 'needs' : 'need'} attention</div>
-              <div className="w">The note under each row says what to fix.</div>
-            </div>
-          </li>
-        )}
-      </ul>
+    <Box title="Check these" aside={<Chip tone={errs ? 'bad' : mine.length ? 'warn' : 'ok'}>{mine.length ? mine.length : 'All good'}</Chip>}>
+      {mine.length ? (
+        <ul className="side-checks">
+          {mine.map((i, ix) => (
+            <li key={ix} className={i.level}>
+              <span className="sev" aria-hidden="true" />
+              <div>
+                <div className="t">{i.msg}</div>
+                <div className="acts">
+                  {i.rows && <a className="linkbtn" href={href(issueTarget(i, sub))}>Go to it</a>}
+                  {i.sms && !solo && <SmsActions compact lead={!!i.rows} text={i.sms} brgy={i.brgy} />}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="box-bd note">Everything for Brgy. {b.name} checks out.</p>
+      )}
     </Box>
   )
 }
 
-export function BarangaysPage({ A, brgy }: { A: Analysis; brgy: string | null }) {
+export function BarangaysPage({ A, brgy, focus }: { A: Analysis; brgy: string | null; focus: string | null }) {
   const sub = useStore((s) => s.sub)
   const brgys = sub.brgys
   const lastBrgy = useStore((s) => s.lastBrgy)
@@ -370,6 +344,19 @@ export function BarangaysPage({ A, brgy }: { A: Analysis; brgy: string | null })
   const b = brgys.find((x) => x.name === brgy) ?? brgys.find((x) => x.name === lastBrgy) ?? brgys[0]
   const name = b?.name
   const remoteId = useStore((s) => (name ? s.remote?.brgyIds[name] : undefined))
+  const isAdmin = useAuth((s) => s.profile?.role === 'admin')
+
+  // "Go to it": scroll to the tanod's row and flash it, then drop the row from the address, so going
+  // back, or tapping the same issue again, works.
+  useEffect(() => {
+    if (!focus || !name) return
+    const el = document.getElementById(`row_${focus}`)
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el?.classList.add('focus')
+    navigate({ page: 'barangays', brgy: name }, { replace: true, scroll: false })
+    const t = setTimeout(() => el?.classList.remove('focus'), 2600)
+    return () => clearTimeout(t)
+  }, [focus, name])
 
   // Remember the open barangay so the Barangays step reopens it.
   // Braces matter: the persisted store's setter returns a promise, and an effect may only return a cleanup function.
@@ -388,38 +375,47 @@ export function BarangaysPage({ A, brgy }: { A: Analysis; brgy: string | null })
   return (
     <section className="page-section">
       {!solo && <CopyAllBarangays />}
-      <div className={`split ${solo ? 'solo' : ''}`}>
-        {!solo && <Rail A={A} current={b.name} />}
-        <fieldset className="editor plain" disabled={!editable}>
-          <div className="ed-head">
-            <div>
-              <div className="eyebrow">{solo ? `${sub.municipality} · CY ${sub.year}` : `Barangay ${ix + 1} of ${brgys.length}${range}`}</div>
-              <h2>{solo ? `Brgy. ${b.name}` : b.name}</h2>
-            </div>
-            <div className="ed-meta">
-              <Chip tone={st.tone}>{st.label}</Chip>
-              <span className={`count ${n > b.limit ? 'over' : ''}`}>
-                <b className="num">{n}</b>
-                <span className="num"> / {b.limit}</span> tanods allowed
+      <div className="tanod-screen">
+        <div className="ts-main">
+          {/* Above the list's lock, so a locked list (or the provincial office's read-only view) can still switch barangays. */}
+          {!solo && (
+            <div className="pick-row">
+              <BarangayPicker A={A} current={b.name} />
+              <span className="pn">
+                {prev ? <a className="iconbtn" href={href({ page: 'barangays', brgy: prev.name })} aria-label={`Previous: ${prev.name}`}>{Icon.prev}</a> : <span className="iconbtn off">{Icon.prev}</span>}
+                {next ? <a className="iconbtn" href={href({ page: 'barangays', brgy: next.name })} aria-label={`Next: ${next.name}`}>{Icon.next}</a> : <span className="iconbtn off">{Icon.next}</span>}
               </span>
-              {!solo && (
-                <span className="pn">
-                  {prev ? <a className="iconbtn" href={href({ page: 'barangays', brgy: prev.name })} aria-label={`Previous: ${prev.name}`}>{Icon.prev}</a> : <span className="iconbtn off">{Icon.prev}</span>}
-                  {next ? <a className="iconbtn" href={href({ page: 'barangays', brgy: next.name })} aria-label={`Next: ${next.name}`}>{Icon.next}</a> : <span className="iconbtn off">{Icon.next}</span>}
-                </span>
-              )}
             </div>
-          </div>
-          <CopyLastYear b={b} />
-          <ScansWaiting barangayId={remoteId} />
-          <Attention b={b} A={A} />
-          <Roster key={b.name} b={b} A={A} solo={solo} />
-          <div className="grid2 even">
-            <Requirements b={b} />
-            <FocalPerson b={b} />
-          </div>
+          )}
+          <fieldset className="editor plain" disabled={!editable}>
+            <div className="ed-head">
+              <div>
+                <div className="eyebrow">{solo ? `${sub.municipality} · CY ${sub.year}` : `Barangay ${ix + 1} of ${brgys.length}${range}`}</div>
+                <h2>{solo ? `Brgy. ${b.name}` : b.name}</h2>
+              </div>
+              <div className="ed-meta">
+                <Chip tone={st.tone}>{st.label}</Chip>
+                <span className={`count ${n > b.limit ? 'over' : ''}`}>
+                  <b className="num">{n}</b>
+                  <span className="num"> / {b.limit}</span> tanods
+                </span>
+              </div>
+            </div>
+            <CopyLastYear b={b} />
+            <ScansWaiting barangayId={remoteId} />
+            <Roster key={b.name} b={b} A={A} solo={solo} />
+          </fieldset>
           {!solo && <NextStep to={{ page: 'review' }} label="Continue to Review" />}
-        </fieldset>
+        </div>
+        <aside className="ts-side" aria-label={`Brgy. ${b.name}: checks and requirements`}>
+          <SideChecks b={b} A={A} />
+          <fieldset className="plain side-stack" disabled={!editable}>
+            <Requirements b={b} />
+            {!solo && <FocalPerson b={b} />}
+          </fieldset>
+          {/* Only the provincial office works with limits. Outside the list's lock, which is read-only for it. */}
+          {isAdmin && <TanodLimit key={b.name} b={b} barangayId={remoteId} />}
+        </aside>
       </div>
     </section>
   )

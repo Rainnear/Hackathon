@@ -18,8 +18,8 @@ interface ScanState {
   close: () => void
 }
 
-/** ID scans waiting for the secretary: read (or failed to read) but not yet saved as a tanod. */
-export const isWaiting = (s: Scan) => s.kind === 'id' && (s.status === 'ready' || s.status === 'failed')
+/** ID and list scans waiting for the secretary: read (or failed to read) but not yet added as tanods. */
+export const isWaiting = (s: Scan) => (s.kind === 'id' || s.kind === 'list') && (s.status === 'ready' || s.status === 'failed')
 
 export const useScans = create<ScanState>()((set, get) => ({
   list: [],

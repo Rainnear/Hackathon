@@ -4,41 +4,17 @@ import { get } from 'idb-keyval'
 
 import { Box, CommitInput, NextStep, PageHead } from '../components/ui'
 import { IssueItem } from '../components/Issues'
+import { SignatoryField } from '../components/SignatoryField'
 import { useEditable } from '../state/access'
 import { MIN_AMOUNT } from '../data/municipalities'
-import { SIG_LABELS, SIG_REQUIRED, type Analysis } from '../domain/analyze'
-import { clean, formatDateTime, peso, plural } from '../domain/format'
+import type { Analysis } from '../domain/analyze'
+import { daysLeftText, deadlineInfo } from '../domain/deadline'
+import { formatDateTime, peso, plural } from '../domain/format'
 import { backupFileName, makeBackup, normalizeSubmission, parseBackup } from '../domain/submission'
-import type { SignatoryKey, Submission } from '../domain/types'
+import type { Submission } from '../domain/types'
 import { useStore } from '../state/store'
 import { PRESYNC_KEY, forgetPresync, switchYear } from '../state/sync'
 import { toast } from '../state/toast'
-
-function SignatoryField({ k }: { k: SignatoryKey }) {
-  const value = useStore((s) => s.sub.sig[k])
-  const setSignatory = useStore((s) => s.setSignatory)
-  const optional = !SIG_REQUIRED.includes(k) && k !== 'authPos'
-  return (
-    <div className="field">
-      <label htmlFor={`sig_${k}`}>
-        {SIG_LABELS[k]}
-        {optional && ' (optional)'}
-      </label>
-      <CommitInput
-        key={value}
-        id={`sig_${k}`}
-        value={value}
-        autoComplete="off"
-        className={k === 'authPos' ? '' : 'upper'}
-        onCommit={(v) => {
-          const c = k === 'authPos' ? v.trim() : clean(v)
-          setSignatory(k, c)
-          return c
-        }}
-      />
-    </div>
-  )
-}
 
 /** Whether the browser has promised not to clear this site's data when space runs low. */
 function usePersistedStorage() {
@@ -117,11 +93,10 @@ function DataBox() {
   }
 
   return (
-    <Box title="Your data" aside={<span className="note">Saved online and on this device</span>}>
+    <Box title="Your data" tip="Saved online and on this device. Changes upload on their own; the copy here is for when there is no internet.">
       <div className="box-bd stack">
         <p className="note">
           {n ? `${plural(n, 'tanod')} in CY ${sub.year}. ` : 'Nothing encoded yet. '}
-          Changes upload to Supabase on their own, and a copy stays on this device for when there is no internet.
           {lastBackupAt ? ` Last backup file: ${formatDateTime(lastBackupAt)}.` : ''}
         </p>
         {persisted === false && (
@@ -167,6 +142,30 @@ function DataBox() {
           </div>
         )}
         {importError && <p className="note bad">{importError}</p>}
+      </div>
+    </Box>
+  )
+}
+
+/** The province's deadline (read-only here) and the Rep's own deadline for barangays. */
+function DeadlinesBox() {
+  const sub = useStore((s) => s.sub)
+  const setSubmissionField = useStore((s) => s.setSubmissionField)
+  const editable = useEditable()
+  const p = sub.provinceDue ? deadlineInfo(sub.provinceDue) : null
+  const late = !!sub.barangayDue && !!sub.provinceDue && sub.barangayDue > sub.provinceDue
+  return (
+    <Box title="Deadlines" tip="Shown at the top of everyone's screen. Secretaries see your date counting down; it turns red 7 days before, and a barangay is marked Late once it passes.">
+      <div className="box-bd stack">
+        <div className="field">
+          <span className="lbl-like">Province's deadline for {sub.municipality} (set by the provincial office)</span>
+          <b>{p ? `${p.long} · ${daysLeftText(p)}` : 'Not set yet'}</b>
+        </div>
+        <div className="field">
+          <label htmlFor="brgyDue">Barangays must submit to you by</label>
+          <input id="brgyDue" type="date" value={sub.barangayDue} disabled={!editable} onChange={(e) => setSubmissionField({ barangayDue: e.target.value })} />
+          {late && <p className="note bad">This is after the province's deadline. Leave yourself time to review and print.</p>}
+        </div>
       </div>
     </Box>
   )
@@ -245,7 +244,8 @@ export function SetupPage({ A }: { A: Analysis }) {
             </div>
             <p className="box-bd note pt0">The municipality comes from your account. Changing the year opens that year's list; a year that has not been opened yet starts empty.</p>
           </Box>
-          <Box title="Masterlist signatories" aside={<span className="note">Sign every page</span>}>
+          <DeadlinesBox />
+          <Box title="Masterlist signatories" tip="They sign every page of the masterlist.">
             <div className="box-bd fields">
               <SignatoryField k="liga" />
               <SignatoryField k="mlgoo" />
@@ -253,7 +253,7 @@ export function SetupPage({ A }: { A: Analysis }) {
           </Box>
         </div>
         <div className="col">
-          <Box title="Payroll signatories" aside={<span className="note">Boxes A to E</span>}>
+          <Box title="Payroll signatories" tip="Printed in boxes A to E at the bottom of every payroll page.">
             <div className="box-bd fields">
               {(['auth', 'authPos', 'acct', 'treas', 'lce', 'disb'] as const).map((k) => <SignatoryField key={k} k={k} />)}
             </div>

@@ -1,4 +1,4 @@
-import { useState, type InputHTMLAttributes, type ReactNode } from 'react'
+import { useId, useState, type InputHTMLAttributes, type ReactNode } from 'react'
 
 import { href, type Route } from '../state/route'
 import type { Tone } from '../domain/types'
@@ -8,12 +8,27 @@ export function Chip({ tone, children, className = '' }: { tone: Tone; children:
   return <span className={`chip ${tone} ${className}`}>{children}</span>
 }
 
-export function Box({ title, aside, children, className = '', id }: { title?: ReactNode; aside?: ReactNode; children: ReactNode; className?: string; id?: string }) {
+/**
+ * A small "i" beside a heading: the explanation shows on hover, on keyboard focus, or when tapped, so
+ * screens stay uncluttered and the help is still one tap away.
+ */
+export function InfoTip({ children, label = 'More about this' }: { children: ReactNode; label?: string }) {
+  const id = useId()
+  return (
+    <span className="tip">
+      <button type="button" className="tip-btn" aria-label={label} aria-describedby={id}>i</button>
+      <span role="tooltip" id={id} className="tip-body">{children}</span>
+    </span>
+  )
+}
+
+/** tip: help text for the box, shown from an "i" beside the title. */
+export function Box({ title, aside, tip, children, className = '', id }: { title?: ReactNode; aside?: ReactNode; tip?: ReactNode; children: ReactNode; className?: string; id?: string }) {
   return (
     <section className={`box ${className}`} id={id}>
       {title && (
         <div className="box-hd">
-          <h3>{title}</h3>
+          <h3>{title}{tip && <InfoTip>{tip}</InfoTip>}</h3>
           {aside && <div className="r">{aside}</div>}
         </div>
       )}
@@ -26,8 +41,7 @@ export function PageHead({ title, sub, children }: { title: ReactNode; sub?: Rea
   return (
     <div className="phead no-print">
       <div>
-        <h2>{title}</h2>
-        {sub && <p className="sub">{sub}</p>}
+        <h2>{title}{sub && <InfoTip>{sub}</InfoTip>}</h2>
       </div>
       {children}
     </div>

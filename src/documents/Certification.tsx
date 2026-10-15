@@ -25,8 +25,14 @@ const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th
 const Fill = ({ children, width = '9em' }: { children?: string; width?: string }) =>
   children ? <u className="fill">{children}</u> : <span className="blank" style={{ width }} />
 
-export function BarangayCertification({ municipality, b, o }: { municipality: string; b: Barangay; o: CertOptions }) {
-  const names = b.tanods.map(fullName).filter(Boolean)
+/**
+ * b null leaves the barangay blank. blank leaves numbered lines for the names instead of the list
+ * (as many as the barangay's limit), to be written by hand.
+ */
+export function BarangayCertification({ municipality, b, o, blank = false }: { municipality: string; b: Barangay | null; o: CertOptions; blank?: boolean }) {
+  const names = blank || !b ? [] : b.tanods.map(fullName).filter(Boolean)
+  const lines = names.length ? 0 : blank ? (b?.limit ?? 15) : 1
+  const two = names.length > 20 || lines > 20
   const issued = new Date(o.issued + 'T00:00:00')
   const ok = !isNaN(+issued)
   const month = ok ? issued.toLocaleDateString('en-US', { month: 'long' }) : ''
@@ -38,27 +44,29 @@ export function BarangayCertification({ municipality, b, o }: { municipality: st
         <div className="script">Republic of the Philippines</div>
         <b>PROVINCE OF ILOILO</b>
         <div><b>City/Municipality of</b> <Fill>{municipality.toUpperCase()}</Fill></div>
-        <div className="bc-brgy">BARANGAY <Fill>{b.name.toUpperCase()}</Fill></div>
+        <div className="bc-brgy">BARANGAY <Fill>{b?.name.toUpperCase()}</Fill></div>
         <div className="bc-office">OFFICE OF THE PUNONG BARANGAY</div>
         <div className="bc-title">CERTIFICATION</div>
       </div>
       <p className="bc-to">TO WHOM IT MAY CONCERN:</p>
       <p className="ind">This is to certify that the following names:</p>
       {names.length ? (
-        <ol className={`bc-names ${names.length > 20 ? 'two' : ''}`}>
+        <ol className={`bc-names ${two ? 'two' : ''}`}>
           {names.map((n, i) => <li key={i}><u>{n}</u></li>)}
         </ol>
       ) : (
-        <ol className="bc-names"><li><span className="blank" style={{ width: '20em' }} /></li></ol>
+        <ol className={`bc-names ${two ? 'two' : ''}`}>
+          {Array.from({ length: lines }, (_, i) => <li key={i}><span className="blank" style={{ width: two ? '13em' : '20em' }} /></li>)}
+        </ol>
       )}
       <p className="ind">
-        Are Barangay Tanod members of Barangay <Fill>{b.name}</Fill>, <Fill>{municipality}</Fill>, Iloilo have rendered at least six (6) months of service as of{' '}
+        Are Barangay Tanod members of Barangay <Fill>{b?.name}</Fill>, <Fill>{municipality}</Fill>, Iloilo have rendered at least six (6) months of service as of{' '}
         <Fill width="12em">{longDate(o.asOf)}</Fill>.
       </p>
       <p className="ind">This is to certify further that the above-said names of Barangay Tanod have planted and grown at least five (5) trees within this year.</p>
       <p className="ind">This certification is issued for whatever legal purpose it may serve.</p>
       <p className="ind">
-        Done this <Fill width="4em">{day}</Fill> day of <Fill width="7em">{month}</Fill>, <Fill width="4em">{year}</Fill> at Barangay <Fill>{b.name}</Fill>,{' '}
+        Done this <Fill width="4em">{day}</Fill> day of <Fill width="7em">{month}</Fill>, <Fill width="4em">{year}</Fill> at Barangay <Fill>{b?.name}</Fill>,{' '}
         <Fill>{municipality}</Fill>, Iloilo.
       </p>
       <div className="bc-sign">

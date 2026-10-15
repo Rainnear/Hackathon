@@ -133,7 +133,7 @@ const ANSWERS: { q: string; a: string }[] = [
   },
   {
     q: 'My account says "Waiting for approval"',
-    a: 'Your municipal Tanod Rep has to approve new accounts. Tell them you have signed up. Once they approve you, tap "Check again".',
+    a: 'Your municipal Liga Rep has to approve new accounts. Tell them you have signed up. Once they approve you, tap "Check again".',
   },
   {
     q: 'I have no internet or weak signal',

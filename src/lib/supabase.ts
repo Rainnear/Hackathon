@@ -22,6 +22,8 @@ export interface Profile {
   barangay_id: number | null
   municipality: string | null
   barangay: string | null
+  /** What a sign-up asked to be: a barangay secretary or the municipality's Liga Rep. */
+  requested_role?: Role | null
 }
 
 export interface BarangayRow {
@@ -41,8 +43,8 @@ export interface MunicipalityRow {
 export const ROLE_LABELS: Record<Role, string> = {
   pending: 'Waiting for approval',
   secretary: 'Barangay secretary',
-  rep: 'Municipal Tanod Rep',
-  admin: 'Administrator',
+  rep: 'Liga Rep',
+  admin: 'Provincial administrator',
 }
 
 const PROFILE_COLUMNS = 'id, full_name, phone, role, municipality_id, barangay_id, municipalities(name), barangays(name)'
@@ -61,6 +63,7 @@ export const toProfile = (r: ProfileRow): Profile => ({
   barangay_id: r.barangay_id,
   municipality: r.municipalities?.name ?? null,
   barangay: r.barangays?.name ?? null,
+  requested_role: r.requested_role ?? null,
 })
 
 export async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -83,9 +86,15 @@ export async function fetchAllPages<T>(page: (from: number, to: number) => Promi
 
 /** Every profile the signed-in rep or admin is allowed to see (row-level security does the filtering). */
 export async function fetchManagedProfiles(): Promise<Profile[]> {
-  const rows = await fetchAllPages((from, to) =>
-    supabase.from('profiles').select(PROFILE_COLUMNS).order('created_at').order('id').range(from, to) as unknown as PromiseLike<{ data: ProfileRow[] | null; error: Error | null }>,
-  )
+  const get = (cols: string) =>
+    fetchAllPages((from, to) =>
+      supabase.from('profiles').select(cols).order('created_at').order('id').range(from, to) as unknown as PromiseLike<{ data: ProfileRow[] | null; error: Error | null }>,
+    )
+  // requested_role arrived with database script 1100; before it runs, read the accounts without it.
+  const rows = await get(PROFILE_COLUMNS + ', requested_role').catch((e: Error) => {
+    if (/requested_role/.test(e.message)) return get(PROFILE_COLUMNS)
+    throw e
+  })
   return rows.map(toProfile)
 }
 
@@ -153,14 +162,27 @@ export async function fetchBarangays(municipalityId: number): Promise<BarangayRo
 }
 
 /** Turns Supabase's error text into something a secretary can act on. */
+/**
+ * The built-in accounts (OPPDC-ADMIN, DEV-Admin) sign in with a username. Supabase signs people in by
+ * email, so a username is kept as <username>@sakto.invalid: a reserved domain that can never get mail.
+ */
+export const USERNAME_DOMAIN = 'sakto.invalid'
+export const loginEmail = (id: string) => {
+  const v = id.trim()
+  return v.includes('@') ? v : `${v.toLowerCase()}@${USERNAME_DOMAIN}`
+}
+export const isUsernameAccount = (email: string | null | undefined) => !!email?.toLowerCase().endsWith('@' + USERNAME_DOMAIN)
+
 export function friendlyAuthError(message: string): string {
   const m = message.toLowerCase()
-  if (m.includes('invalid login credentials')) return 'That email and password do not match. Check them, or reset your password.'
+  if (m.includes('invalid login credentials')) return 'That email or username and password do not match. Check them, or reset your password.'
+  if (m.includes('different from the old') || m.includes('same_password') || m.includes('same password'))
+    return 'Choose a password different from the one you signed in with.'
   if (m.includes('email not confirmed')) return 'Confirm your email first. Open the link we sent you, then sign in.'
   if (m.includes('already registered') || m.includes('already been registered')) return 'An account with this email already exists. Sign in instead, or reset the password.'
   if (m.includes('password should be') || m.includes('weak')) return 'Choose a longer password: at least 8 characters, mixing letters and numbers.'
   if (m.includes('rate limit') || m.includes('too many')) return 'Too many attempts. Wait a few minutes, then try again.'
   if (m.includes('failed to fetch') || m.includes('network')) return 'No internet connection. Signing in needs internet; try again once you are online.'
-  if (m.includes('only the municipal tanod rep')) return 'Only the municipal Tanod Rep or an administrator can change roles and assignments.'
+  if (m.includes('only the municipal tanod rep')) return 'Only the municipal Liga Rep or an administrator can change roles and assignments.'
   return message
 }

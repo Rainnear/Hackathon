@@ -4,6 +4,8 @@ import {
   fetchBarangays,
   fetchMunicipalities,
   friendlyAuthError,
+  isUsernameAccount,
+  loginEmail,
   supabase,
   type BarangayRow,
   type MunicipalityRow,
@@ -66,20 +68,31 @@ function SignIn({ go }: { go: (m: Mode) => void }) {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail(email), password })
     setBusy(false)
     if (error) setError(friendlyAuthError(error.message))
   }
   return (
     <AuthCard
       title="Sign in"
-      sub="Barangay secretaries and the municipal Tanod Rep sign in here."
+      sub="Barangay secretaries, the municipal Liga Rep and the provincial office sign in here."
       footer={<>New here? <button type="button" className="linkbtn" onClick={() => go('signup')}>Create an account</button></>}
     >
       <form className="stack" onSubmit={submit}>
         <div className="field">
-          <label htmlFor="si_email">Email</label>
-          <input id="si_email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+          <label htmlFor="si_email">Email or username</label>
+          <input
+            id="si_email"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="username"
+            required
+          />
         </div>
         <PasswordField id="si_pw" label="Password" value={password} onChange={setPassword} autoComplete="current-password" />
         {error && <Message tone="bad">{error}</Message>}
@@ -92,6 +105,9 @@ function SignIn({ go }: { go: (m: Mode) => void }) {
 
 function SignUp({ go }: { go: (m: Mode) => void }) {
   const [form, setForm] = useState({ name: '', phone: '', email: '', password: '', municipality: '', barangay: '' })
+  // Barangay secretary: one barangay. Liga Rep: the whole municipality.
+  const [as, setAs] = useState<'secretary' | 'rep'>('secretary')
+  const rep = as === 'rep'
   const [munis, setMunis] = useState<MunicipalityRow[]>([])
   const [brgys, setBrgys] = useState<BarangayRow[]>([])
   const [busy, setBusy] = useState(false)
@@ -122,7 +138,8 @@ function SignUp({ go }: { go: (m: Mode) => void }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!form.barangay) return setError('Choose your barangay.')
+    if (!form.municipality) return setError('Choose your municipality.')
+    if (!rep && !form.barangay) return setError('Choose your barangay.')
     setBusy(true)
     setError(null)
     const { data, error } = await supabase.auth.signUp({
@@ -130,7 +147,9 @@ function SignUp({ go }: { go: (m: Mode) => void }) {
       password: form.password,
       options: {
         emailRedirectTo: location.origin,
-        data: { full_name: form.name.trim(), phone: form.phone.trim(), barangay_id: form.barangay },
+        data: rep
+          ? { full_name: form.name.trim(), phone: form.phone.trim(), requested_role: 'rep', municipality_id: form.municipality }
+          : { full_name: form.name.trim(), phone: form.phone.trim(), requested_role: 'secretary', barangay_id: form.barangay },
       },
     })
     setBusy(false)
@@ -143,7 +162,12 @@ function SignUp({ go }: { go: (m: Mode) => void }) {
     return (
       <AuthCard
         title="Check your email"
-        sub={<>We sent a confirmation link to <b>{form.email}</b>. Open it on this device, then sign in. After that, the {munis.find((m) => String(m.id) === form.municipality)?.name ?? 'municipal'} Tanod Rep approves your account.</>}
+        sub={
+          <>
+            We sent a confirmation link to <b>{form.email}</b>. Open it on this device, then sign in. After that,{' '}
+            {rep ? 'the provincial office (OPPDC) approves you as Liga Rep.' : `the ${munis.find((m) => String(m.id) === form.municipality)?.name ?? 'municipal'} Liga Rep approves your account.`}
+          </>
+        }
         footer={<button type="button" className="linkbtn" onClick={() => go('signin')}>Back to sign in</button>}
       >
         <span />
@@ -153,10 +177,27 @@ function SignUp({ go }: { go: (m: Mode) => void }) {
   return (
     <AuthCard
       title="Create an account"
-      sub="For barangay secretaries. The municipal Tanod Rep approves each account before it can see any tanods."
+      sub="For barangay secretaries and Liga Reps. Each account is approved before it can see any tanods."
       footer={<>Already have an account? <button type="button" className="linkbtn" onClick={() => go('signin')}>Sign in</button></>}
     >
       <form className="stack" onSubmit={submit}>
+        <fieldset className="plain su-as">
+          <legend className="lbl-like">I am signing up as</legend>
+          <label className={`reason ${!rep ? 'on' : ''}`}>
+            <input type="radio" name="su_as" checked={!rep} onChange={() => setAs('secretary')} />
+            <span>
+              Barangay secretary
+              <small>Represents one barangay. Approved by the municipality's Liga Rep.</small>
+            </span>
+          </label>
+          <label className={`reason ${rep ? 'on' : ''}`}>
+            <input type="radio" name="su_as" checked={rep} onChange={() => setAs('rep')} />
+            <span>
+              Liga Rep
+              <small>Represents the whole municipality. Approved by the provincial office.</small>
+            </span>
+          </label>
+        </fieldset>
         <div className="field">
           <label htmlFor="su_name">Full name</label>
           <input id="su_name" value={form.name} onChange={(e) => set('name')(e.target.value)} autoComplete="name" required />
@@ -169,13 +210,15 @@ function SignUp({ go }: { go: (m: Mode) => void }) {
               {munis.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </div>
-          <div className="field">
-            <label htmlFor="su_brgy">Barangay</label>
-            <select id="su_brgy" value={form.barangay} onChange={(e) => set('barangay')(e.target.value)} required disabled={!brgys.length}>
-              <option value="">Choose…</option>
-              {brgys.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </div>
+          {!rep && (
+            <div className="field">
+              <label htmlFor="su_brgy">Barangay</label>
+              <select id="su_brgy" value={form.barangay} onChange={(e) => set('barangay')(e.target.value)} required disabled={!brgys.length}>
+                <option value="">Choose…</option>
+                {brgys.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <div className="field">
           <label htmlFor="su_phone">Mobile number</label>
@@ -202,6 +245,11 @@ function Forgot({ go }: { go: (m: Mode) => void }) {
     e.preventDefault()
     setBusy(true)
     setError(null)
+    if (!email.includes('@') || isUsernameAccount(email)) {
+      setBusy(false)
+      setError('Accounts that sign in with a username have no email to send a link to. Ask the Sakto team to reset the password.')
+      return
+    }
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: location.origin })
     setBusy(false)
     if (error) setError(friendlyAuthError(error.message))
@@ -219,7 +267,7 @@ function Forgot({ go }: { go: (m: Mode) => void }) {
         <form className="stack" onSubmit={submit}>
           <div className="field">
             <label htmlFor="fp_email">Email</label>
-            <input id="fp_email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+            <input id="fp_email" type="text" inputMode="email" autoCapitalize="none" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
           </div>
           {error && <Message tone="bad">{error}</Message>}
           <button type="submit" className="btn primary block" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</button>
@@ -261,8 +309,59 @@ export function NewPassword() {
   )
 }
 
+/**
+ * Accounts made with a starting password (OPPDC-ADMIN, DEV-Admin) must choose their own before Sakto
+ * opens. Supabase drops the account's "must change password" mark when the password changes.
+ */
+export function FirstPassword() {
+  const session = useAuth((s) => s.session)
+  const markPasswordChanged = useAuth((s) => s.markPasswordChanged)
+  const signOut = useAuth((s) => s.signOut)
+  const [password, setPassword] = useState('')
+  const [again, setAgain] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const email = session?.user.email ?? ''
+  const who = isUsernameAccount(email) ? email.split('@')[0].toUpperCase() : email
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    if (password !== again) return setError('The two passwords are different. Type the same new password twice.')
+    setBusy(true)
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) {
+      setBusy(false)
+      return setError(friendlyAuthError(error.message))
+    }
+    // A fresh session carries the account without the mark, so the next sign-in goes straight in.
+    await supabase.auth.refreshSession().catch(() => {})
+    setBusy(false)
+    markPasswordChanged()
+  }
+  return (
+    <AuthCard
+      title="Choose your own password"
+      sub={
+        <>
+          You signed in{who ? <> as <b>{who}</b></> : null} with a starting password that other people know. Choose a new one that only you know before
+          you continue. You will sign in with it from now on.
+        </>
+      }
+      footer={<button type="button" className="linkbtn" onClick={signOut}>Sign out</button>}
+    >
+      <form className="stack" onSubmit={submit}>
+        <PasswordField id="fp_new" label="New password" value={password} onChange={setPassword} autoComplete="new-password" hint="At least 8 characters. Not the starting password." />
+        <PasswordField id="fp_again" label="Type it again" value={again} onChange={setAgain} autoComplete="new-password" />
+        {error && <Message tone="bad">{error}</Message>}
+        <button type="submit" className="btn primary block" disabled={busy}>{busy ? 'Saving…' : 'Save and continue'}</button>
+      </form>
+    </AuthCard>
+  )
+}
+
 export function Pending() {
-  const { profile, signOut, refreshProfile, offline } = useAuth()
+  const { profile, signOut, refreshProfile, offline, session } = useAuth()
+  const askedRep = session?.user.user_metadata?.requested_role === 'rep'
   const [checking, setChecking] = useState(false)
   const [helping, setHelping] = useState(false)
   return (
@@ -270,7 +369,17 @@ export function Pending() {
       title="Waiting for approval"
       sub={
         <>
-          Your account{profile?.barangay ? ` for Brgy. ${profile.barangay}` : ''} is set up. The {profile?.municipality ?? 'municipal'} Tanod Rep needs to approve it before you can see and encode tanods. Let them know you've signed up.
+          {askedRep ? (
+            <>
+              Your account as Liga Rep{profile?.municipality ? ` of ${profile.municipality}` : ''} is set up. The provincial office (OPPDC) needs to approve it before you can see
+              the municipality's lists. Let them know you've signed up.
+            </>
+          ) : (
+            <>
+              Your account{profile?.barangay ? ` for Brgy. ${profile.barangay}` : ''} is set up. The {profile?.municipality ?? 'municipal'} Liga Rep needs to approve it before you can see
+              and encode tanods. Let them know you've signed up.
+            </>
+          )}
         </>
       }
       footer={<button type="button" className="linkbtn" onClick={signOut}>Sign out</button>}
@@ -300,7 +409,7 @@ export function Pending() {
 export function ProfileMissing() {
   const signOut = useAuth((s) => s.signOut)
   return (
-    <AuthCard title="Account not set up" sub="You're signed in, but there's no Sakto profile for this account yet. If you just signed up, wait a moment and reload. Otherwise ask your Tanod Rep or administrator." footer={<button type="button" className="linkbtn" onClick={signOut}>Sign out</button>}>
+    <AuthCard title="Account not set up" sub="You're signed in, but there's no Sakto profile for this account yet. If you just signed up, wait a moment and reload. Otherwise ask your Liga Rep or administrator." footer={<button type="button" className="linkbtn" onClick={signOut}>Sign out</button>}>
       <button type="button" className="btn primary block" onClick={() => location.reload()}>Reload</button>
     </AuthCard>
   )

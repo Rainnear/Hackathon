@@ -1,10 +1,11 @@
 // Scans: ID and document photos in Supabase Storage, with a row in public.scans for each.
 import { newId } from '../domain/format'
 import { extensionFor, shrinkPhoto } from './images'
-import { blankFields, readId, type IdFields } from './reader'
+import type { ListRow } from './idParse'
+import { blankFields, readId, readList, type IdFields, type ListFields } from './reader'
 import { supabase } from './supabase'
 
-export type ScanKind = 'id' | 'certification' | 'designation' | 'spa'
+export type ScanKind = 'id' | 'list' | 'certification' | 'designation' | 'spa'
 export type ScanStatus = 'uploading' | 'reading' | 'ready' | 'failed' | 'saved' | 'discarded'
 
 export interface Scan {
@@ -15,7 +16,11 @@ export interface Scan {
   status: ScanStatus
   front_path: string | null
   back_path: string | null
-  fields: Partial<IdFields>
+  /**
+   * ID scans: the name fields (as confirmed in the review), and what the reader made of the photo in
+   * `read`. List scans and signed certifications: { rows, reader }, the names read from the page.
+   */
+  fields: Partial<IdFields> & { rows?: ListRow[]; read?: { last: string; first: string; mi: string; suffix: string; conf: number } }
   error: string | null
   tanod_id: string | null
   source: 'web' | 'phone'
@@ -27,6 +32,18 @@ const COLS = 'id, submission_id, barangay_id, kind, status, front_path, back_pat
 
 function fail(error: { message: string } | null) {
   if (error) throw new Error(error.message)
+}
+
+/** Says why a scan failed in words a secretary can act on, instead of always blaming the internet. */
+export function scanErrorMessage(e: unknown): string {
+  const m = String((e as Error)?.message ?? e)
+  if (!navigator.onLine || /failed to fetch|networkerror|load failed/i.test(m)) return 'There is no internet connection. Connect, then try again.'
+  if (/bucket not found|could not find the table|relation .*scans.* does not exist|PGRST205/i.test(m))
+    return 'Photo scanning is not set up in Supabase yet. Ask the Sakto team to run the scans database script (0400).'
+  if (/row-level security|permission denied|42501|unauthorized/i.test(m)) return 'Supabase refused the photo. The list may be locked, or your account may not have access to this barangay.'
+  if (/payload too large|exceeded the maximum|413/i.test(m)) return 'The photo is too large. Try a smaller photo (under 10 MB).'
+  if (/mime|content type|invalid_mime/i.test(m)) return 'That file type is not allowed. Use a JPG or PNG photo.'
+  return `The photo could not be uploaded: ${m}`
 }
 
 async function upload(path: string, file: Blob) {
@@ -48,29 +65,64 @@ export async function createScan(o: { submissionId: number; barangayId: number; 
   await upload(frontPath, front)
   if (back && backPath) await upload(backPath, back)
 
-  const isId = o.kind === 'id'
+  // IDs and lists are read and then reviewed; a document photo is saved straight away.
+  const isId = o.kind === 'id' || o.kind === 'list'
   const ins = await supabase
     .from('scans')
     .insert({ id, submission_id: o.submissionId, barangay_id: o.barangayId, kind: o.kind, status: isId ? 'reading' : 'saved', front_path: frontPath, back_path: backPath, source: 'web' })
     .select(COLS)
     .single()
   fail(ins.error)
+  // A signed certification: read the names on it, to check them against the tanod list.
+  if (o.kind === 'certification') return (await readCertificationPhoto(ins.data as Scan, front)) ?? (ins.data as Scan)
   if (!isId) return ins.data as Scan
 
-  let fields: IdFields
+  let fields: IdFields | ListFields
   let status: ScanStatus = 'ready'
   let error: string | null = null
   try {
-    fields = await readId(front, back)
+    fields = o.kind === 'list' ? await readList(front, id) : await readId(front, back, id)
   } catch (e) {
     // Reading failed, but the photos are safe: the secretary can still type the details in the pop-up.
-    fields = blankFields()
+    fields = o.kind === 'list' ? { rows: [], reader: 'none' } : blankFields()
     status = 'failed'
     error = (e as Error).message
   }
   const upd = await supabase.from('scans').update({ fields, status, error }).eq('id', id).select(COLS).single()
   fail(upd.error)
   return upd.data as Scan
+}
+
+/** The secretary checked the ID again and the list is right: the ID record takes the list's spelling. */
+export async function acceptListName(scan: Scan, name: { last: string; first: string; mi: string; suffix: string }): Promise<Scan> {
+  // The reader's own reading of the photo is dropped too: the person has checked the ID themselves.
+  const { read: _read, ...rest } = scan.fields
+  void _read
+  const { data, error } = await supabase.from('scans').update({ fields: { ...rest, ...name } }).eq('id', scan.id).select(COLS).single()
+  fail(error)
+  return data as Scan
+}
+
+/**
+ * Reads the names on a signed Barangay Certification photo (the free reader first, the AI reader when
+ * it's unsure) and keeps them on the scan as { rows, reader }. Null if it couldn't be read or saved;
+ * the photo itself is unaffected. Without a photo blob, it downloads the saved one.
+ */
+export async function readCertificationPhoto(scan: Scan, photo?: Blob): Promise<Scan | null> {
+  try {
+    let blob = photo
+    if (!blob) {
+      if (!scan.front_path) return null
+      const res = await fetch(await photoUrl(scan.front_path))
+      if (!res.ok) return null
+      blob = await res.blob()
+    }
+    const read = await readList(blob, scan.id)
+    const upd = await supabase.from('scans').update({ fields: { ...scan.fields, rows: read.rows, reader: read.reader } }).eq('id', scan.id).select(COLS).single()
+    return upd.error ? null : (upd.data as Scan)
+  } catch {
+    return null
+  }
 }
 
 /** Every scan in this submission that the signed-in person may see (row-level security filters by barangay). */
@@ -86,7 +138,7 @@ export async function fetchScans(submissionId: number): Promise<Scan[]> {
   return data as Scan[]
 }
 
-export async function markScanSaved(id: string, tanodId: string | null, fields: Partial<IdFields>) {
+export async function markScanSaved(id: string, tanodId: string | null, fields: Scan['fields']) {
   const { data, error } = await supabase.from('scans').update({ status: 'saved', tanod_id: tanodId, fields }).eq('id', id).select('id')
   fail(error)
   if (!data?.length) throw new Error('The list is locked, so this scan can no longer be saved.')

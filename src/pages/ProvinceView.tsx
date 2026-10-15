@@ -1,18 +1,65 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { LimitDialog } from '../components/TanodLimit'
 import { Box, Chip } from '../components/ui'
 import { formatDateTime, plural } from '../domain/format'
 import {
-  fetchAllBarangays, fetchManagedProfiles, fetchMunicipalities, fetchSupportRequests, friendlyAuthError, setSupportStatus,
+  fetchAllBarangays, fetchManagedProfiles, fetchMunicipalities, fetchSupportRequests, friendlyAuthError, setSupportStatus, supabase,
   type BarangayRow, type MunicipalityRow, type Profile, type SupportRequest,
 } from '../lib/supabase'
+import { openMunicipality, useAdminView } from '../state/adminView'
+import { navigate } from '../state/route'
 import { toast } from '../state/toast'
+import { useStore } from '../state/store'
+import { syncNow } from '../state/sync'
+import { daysLeftText, deadlineInfo, isLate } from '../domain/deadline'
 
 interface Data {
   munis: MunicipalityRow[]
   brgys: BarangayRow[]
   people: Profile[]
   reports: SupportRequest[]
+  /** Each municipality's set for the year, if it has been opened. */
+  subs: { municipality_id: number; status: 'open' | 'submitted' | 'closed' }[]
+  /** The province's deadline for municipalities this year, yyyy-mm-dd or ''. */
+  deadline: string
+}
+
+/** The provincial office sets one deadline for every municipality's set this year. */
+function DeadlineSetter({ year, current, summary, onSaved }: { year: number; current: string; summary: string; onSaved: () => void }) {
+  const [value, setValue] = useState(current)
+  const [busy, setBusy] = useState(false)
+  const d = current ? deadlineInfo(current) : null
+  const save = async (date: string | null) => {
+    setBusy(true)
+    const res = date
+      ? await supabase.from('year_deadlines').upsert({ year, municipal_due: date }, { onConflict: 'year' }).select('year')
+      : await supabase.from('year_deadlines').delete().eq('year', year).select('year')
+    setBusy(false)
+    if (res.error) return toast(friendlyAuthError(res.error.message))
+    if (!res.data?.length && date) return toast('Only an administrator can set the provincial deadline.')
+    toast(date ? `Deadline set: every municipality now sees ${deadlineInfo(date)?.long} at the top of Sakto.` : 'Deadline removed.')
+    onSaved()
+    void syncNow()
+  }
+  return (
+    <Box
+      title={`Deadline for municipalities · CY ${year}`}
+      tip="Every Liga Rep sees this date pinned at the top of Sakto, counting down. It turns red 7 days before, and municipalities that haven't submitted by then are marked Late below."
+      aside={<span className="note">{summary}</span>}
+      className="dash-card"
+    >
+      <div className="box-bd stack">
+        <div className="row">
+          <label htmlFor="prov_due" className="lbl-like">Municipalities must submit to the province by</label>
+          <input id="prov_due" type="date" value={value} onChange={(e) => setValue(e.target.value)} style={{ width: 'auto' }} />
+          <button type="button" className="btn primary" disabled={busy || !value || value === current} onClick={() => save(value)}>Save deadline</button>
+          {current && <button type="button" className="btn danger" disabled={busy} onClick={() => save(null)}>Remove</button>}
+        </div>
+        {d && <p className="note">Current deadline: <b>{d.long}</b> · {daysLeftText(d)}</p>}
+      </div>
+    </Box>
+  )
 }
 
 const n = (x: number) => x.toLocaleString('en-PH')
@@ -85,20 +132,33 @@ function Reports({ reports, onChanged }: { reports: SupportRequest[]; onChanged:
 }
 
 export function ProvinceView() {
+  const year = useStore((s) => s.sub.year)
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  // The barangay whose tanod limit is being changed.
+  const [limitFor, setLimitFor] = useState<BarangayRow | null>(null)
+  const openMuni = useAdminView((s) => s.muni)
+  const applyLimit = useStore((s) => s.applyLimit)
 
   const load = useCallback(() => {
-    Promise.all([fetchMunicipalities(), fetchAllBarangays(), fetchManagedProfiles(), fetchSupportRequests()]).then(
-      ([munis, brgys, people, reports]) => {
-        setData({ munis, brgys, people, reports })
+    Promise.all([
+      fetchMunicipalities(),
+      fetchAllBarangays(),
+      fetchManagedProfiles(),
+      fetchSupportRequests(),
+      supabase.from('submissions').select('municipality_id, status').eq('year', year),
+      supabase.from('year_deadlines').select('municipal_due').eq('year', year).maybeSingle(),
+    ]).then(
+      ([munis, brgys, people, reports, subs, due]) => {
+        if (subs.error) throw subs.error
+        setData({ munis, brgys, people, reports, subs: (subs.data ?? []) as Data['subs'], deadline: (due.data as { municipal_due: string } | null)?.municipal_due ?? '' })
         setError(null)
       },
       (e: Error) => setError(friendlyAuthError(e.message)),
     )
-  }, [])
+  }, [year])
   useEffect(load, [load])
 
   const rows = useMemo(() => {
@@ -132,8 +192,10 @@ export function ProvinceView() {
   const shown = rows
     .map((r) => ({ ...r, hits: q ? r.brgys.filter((b) => fold(b.name).includes(q)) : [] }))
     .filter((r) => !q || fold(r.m.name).includes(q) || r.hits.length)
-  const approved = data.people.filter((p) => p.role !== 'pending').length
-  const waiting = data.people.length - approved
+  const statusOf = new Map(data.subs.map((x) => [x.municipality_id, x.status]))
+  const pastDue = !!data.deadline && isLate(data.deadline)
+  const submitted = data.subs.filter((x) => x.status !== 'open').length
+  const lateCount = pastDue ? data.munis.length - submitted : 0
   const withRep = rows.filter((r) => r.reps.length).length
   const covered = rows.reduce((a, r) => a + r.covered, 0)
 
@@ -147,24 +209,24 @@ export function ProvinceView() {
 
   return (
     <>
-      <div className="kpis">
-        <div className="kpi"><div className="kpi-l">Municipalities</div><div className="kpi-v">{n(data.munis.length)}</div><div className="kpi-n">{withRep} with a Tanod Rep</div></div>
+      <div className="kpis three">
+        <div className="kpi"><div className="kpi-l">Municipalities</div><div className="kpi-v">{n(data.munis.length)}</div><div className="kpi-n">{withRep} with a Liga Rep</div></div>
         <div className="kpi"><div className="kpi-l">Barangays</div><div className="kpi-v">{n(data.brgys.length)}</div><div className="kpi-n">{n(covered)} with a secretary</div></div>
         <div className="kpi"><div className="kpi-l">Tanods allowed</div><div className="kpi-v">{n(rows.reduce((a, r) => a + r.allowed, 0))}</div><div className="kpi-n">From the provincial list</div></div>
-        <div className="kpi"><div className="kpi-l">Accounts</div><div className="kpi-v">{n(approved)}</div><div className={`kpi-n ${waiting ? 'warn' : ''}`}>{waiting ? `${waiting} waiting for approval` : 'No one waiting'}</div></div>
       </div>
 
+      <DeadlineSetter key={data.deadline} year={year} current={data.deadline} summary={`${submitted} of ${data.munis.length} submitted${lateCount ? ` · ${lateCount} late` : ''}`} onSaved={load} />
       <Reports reports={data.reports} onChanged={load} />
 
       <Box
         title="Municipalities and barangays"
+        tip={`Each municipality shows its CY ${year} set: Not started, Open (barangays encoding), Submitted or Closed. Open one to see its dashboard.`}
         aside={<button type="button" className="btn sm" onClick={load}>Refresh</button>}
         className="dash-card"
       >
         <div className="box-bd pt0 search">
           <label htmlFor="prov_q" className="sr-only">Find a municipality or barangay</label>
           <input id="prov_q" type="search" placeholder="Find a municipality or barangay…" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
-          <p className="note">Tanod lists are still saved on each device, so the number of tanods encoded will show here once they are stored in Supabase.</p>
         </div>
         {shown.length ? (
           <ul className="munis">
@@ -174,9 +236,24 @@ export function ProvinceView() {
               return (
                 <li key={r.m.id} className={isOpen ? 'open' : ''}>
                   <button type="button" className="muni" aria-expanded={isOpen} onClick={() => toggle(r.m.id)}>
-                    <span className="mu-name">{r.m.name}</span>
+                    <span className="mu-name">
+                      {r.m.name}
+                      <span className="chips">
+                        {(() => {
+                          const st = statusOf.get(r.m.id)
+                          return (
+                            <>
+                              <Chip tone={st === 'submitted' || st === 'closed' ? 'ok' : st === 'open' ? 'warn' : 'idle'}>
+                                {st === 'submitted' ? 'Submitted' : st === 'closed' ? 'Closed' : st === 'open' ? 'Open' : 'Not started'}
+                              </Chip>
+                              {pastDue && st !== 'submitted' && st !== 'closed' && <Chip tone="bad">Late</Chip>}
+                            </>
+                          )
+                        })()}
+                      </span>
+                    </span>
                     <span className="mu-c"><b>{r.brgys.length}</b> barangays · <b>{n(r.allowed)}</b> tanods allowed</span>
-                    <span className="mu-rep">{r.reps.length ? `Rep: ${r.reps.map((p) => p.full_name || 'No name').join(', ')}` : <span className="note">No Tanod Rep yet</span>}</span>
+                    <span className="mu-rep">{r.reps.length ? `Rep: ${r.reps.map((p) => p.full_name || 'No name').join(', ')}` : <span className="note">No Liga Rep yet</span>}</span>
                     <span className="mu-cov">
                       <span className="bar big"><i className={r.covered === r.brgys.length && r.brgys.length ? 'ok' : ''} style={{ width: `${r.brgys.length ? (r.covered / r.brgys.length) * 100 : 0}%` }} /></span>
                       <span className="note">{r.covered} of {r.brgys.length} have a secretary</span>
@@ -184,18 +261,36 @@ export function ProvinceView() {
                     {r.pending > 0 && <Chip tone="warn">{r.pending} waiting</Chip>}
                   </button>
                   {isOpen && (
-                    <ul className="mu-brgys">
-                      {list.map((b) => {
-                        const secs = r.secretaries.filter((p) => p.barangay_id === b.id)
-                        return (
-                          <li key={b.id}>
-                            <span className="bd-name">{b.name}</span>
-                            <span className="note">Up to {plural(b.tanod_limit, 'tanod')}</span>
-                            <span className={secs.length ? '' : 'note'}>{secs.length ? secs.map((p) => p.full_name || 'No name').join(', ') : 'No secretary yet'}</span>
-                          </li>
-                        )
-                      })}
-                    </ul>
+                    <>
+                      <div className="mu-open">
+                        <button
+                          type="button"
+                          className="btn primary"
+                          onClick={() => {
+                            openMunicipality({ id: r.m.id, name: r.m.name })
+                            navigate({ page: 'dashboard' })
+                          }}
+                        >
+                          Open {r.m.name}'s dashboard
+                        </button>
+                        <span className="note">Its progress, lists and documents, read-only.</span>
+                      </div>
+                      <ul className="mu-brgys">
+                        {list.map((b) => {
+                          const secs = r.secretaries.filter((p) => p.barangay_id === b.id)
+                          return (
+                            <li key={b.id}>
+                              <span className="bd-name">{b.name}</span>
+                              <span className="note">
+                                Up to {plural(b.tanod_limit, 'tanod')} ·{' '}
+                                <button type="button" className="linkbtn" onClick={() => setLimitFor(b)}>Change limit</button>
+                              </span>
+                              <span className={secs.length ? '' : 'note'}>{secs.length ? secs.map((p) => p.full_name || 'No name').join(', ') : 'No secretary yet'}</span>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </>
                   )}
                 </li>
               )
@@ -205,6 +300,21 @@ export function ProvinceView() {
           <p className="empty big">Nothing matches “{query}”.</p>
         )}
       </Box>
+      {limitFor && (
+        <LimitDialog
+          brgy={limitFor.name}
+          barangayId={limitFor.id}
+          limit={limitFor.tanod_limit}
+          year={year}
+          onClose={() => setLimitFor(null)}
+          onSaved={(saved) => {
+            // Keep the open municipality's copy in step (barangay names repeat across municipalities).
+            if (openMuni?.id === limitFor.municipality_id) applyLimit(limitFor.name, saved)
+            setLimitFor(null)
+            load()
+          }}
+        />
+      )}
     </>
   )
 }

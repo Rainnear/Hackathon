@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sakto System Architecture</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 16mm }
+  :root { --ink: #16201c; --muted: #56635d; --line: #c9d2cd; --soft: #eef3f0; --brand: #0E6B57; --brand-soft: #dcefe8; --warn: #9a5b00; --warn-soft: #fbf0dc }
+  * { box-sizing: border-box }
+  html, body { margin: 0; background: #fff; color: var(--ink); font: 10.2pt/1.45 Arial, Helvetica, sans-serif }
+  h1 { font-size: 24pt; margin: 0 0 4pt; color: var(--brand); letter-spacing: -.01em }
+  h2 { font-size: 14pt; margin: 18pt 0 6pt; padding-bottom: 3pt; border-bottom: 1.5pt solid var(--brand); color: var(--brand); break-after: avoid }
+  h3 { font-size: 11pt; margin: 11pt 0 3pt; break-after: avoid }
+  p { margin: 0 0 6pt }
+  ul, ol { margin: 0 0 6pt; padding-left: 15pt }
+  li { margin-bottom: 2pt }
+  code { font: 9pt Consolas, "Courier New", monospace; background: var(--soft); padding: 0 2pt; border-radius: 2pt }
+  .sub { color: var(--muted); font-size: 11.5pt; margin-bottom: 10pt }
+  .meta { display: flex; gap: 18pt; font-size: 9pt; color: var(--muted); border-top: 1pt solid var(--line); border-bottom: 1pt solid var(--line); padding: 5pt 0; margin-bottom: 10pt }
+  .meta b { color: var(--ink) }
+  .note { color: var(--muted); font-size: 9pt }
+  .fig { margin: 6pt 0 10pt; break-inside: avoid }
+  .fig svg { width: 100%; height: auto; display: block }
+  .fig figcaption { font-size: 8.8pt; color: var(--muted); margin-top: 3pt }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0 9pt; font-size: 9.2pt; break-inside: auto }
+  th, td { border: .75pt solid var(--line); padding: 3.5pt 5pt; text-align: left; vertical-align: top }
+  th { background: var(--soft); font-weight: 700 }
+  tr { break-inside: avoid }
+  td.c, th.c { text-align: center }
+  .yes { color: var(--brand); font-weight: 700 }
+  .no { color: #9aa49f }
+  .callout { border-left: 3pt solid var(--brand); background: var(--brand-soft); padding: 6pt 9pt; margin: 6pt 0 9pt; break-inside: avoid }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft) }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12pt }
+  .keep { break-inside: avoid }
+  .page-break { break-before: page }
+  svg text { font-family: Arial, Helvetica, sans-serif }
+</style>
+</head>
+<body>
+
+<h1>Sakto: System Architecture</h1>
+<p class="sub">Barangay tanod incentive documents for the Province of Iloilo (Provincial Ordinance 2020-240)</p>
+<div class="meta">
+  <span><b>Version</b> 15 October 2026</span>
+  <span><b>Stage</b> Pilot build</span>
+  <span><b>For</b> OPPDC, the investor and the Sakto team</span>
+</div>
+
+<h2>1. What Sakto does</h2>
+<p>
+  Each year, every barangay in Iloilo lists its tanods for the provincial incentive. The lists go to the municipality, where the
+  Liga Rep checks them and prepares the masterlist, the payroll, a cover sheet and each barangay's certification. The
+  provincial office (OPPDC) then pays from the payroll. Sakto replaces the hand-encoded spreadsheets with one shared list.
+  Barangay secretaries encode or scan their tanods, Sakto checks every rule as they go, and the documents print already filled in and consistent.
+</p>
+
+<h3>Who uses it</h3>
+<table>
+  <tr><th style="width:22%">Role</th><th>What they do in Sakto</th><th style="width:20%">Sees</th></tr>
+  <tr><td><b>Barangay secretary</b></td><td>Encodes their barangay's tanods by typing, scanning IDs or scanning a written list. Ticks requirements and prints the Barangay Certification. Works offline.</td><td>Own barangay; other barangays' progress (read-only)</td></tr>
+  <tr><td><b>Liga Rep</b></td><td>Approves secretaries, sets the barangay deadline, reviews and fixes every list, locks and submits the year, prints the masterlist, payroll, cover sheet and certifications.</td><td>Whole municipality</td></tr>
+  <tr><td><b>Provincial office (OPPDC)</b></td><td>Oversees all 43 municipalities and opens any one read-only. Sets the provincial deadline, changes tanod limits when an ordinance or amendment says so, manages accounts and answers problem reports.</td><td>Whole province</td></tr>
+  <tr><td><b>Sakto team</b></td><td>The same administrator screens as OPPDC, for support.</td><td>Whole province</td></tr>
+</table>
+
+<h2>2. System overview</h2>
+<p>
+  Sakto is a web app installed from the browser (a <i>progressive web app</i>). There is no custom server: the app talks directly
+  to <b>Supabase</b>, a hosted Postgres database with sign-in, file storage and serverless functions. Every access rule is
+  enforced inside the database, so the app cannot show or change data a person is not allowed to touch.
+</p>
+<figure class="fig">
+<svg id="fig1" viewBox="0 0 800 330" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#56635d"/></marker>
+  </defs>
+  <style>
+    #fig1 .box{fill:#fff;stroke:#0E6B57;stroke-width:1.6}
+    #fig1 .grp{fill:#eef3f0;stroke:#c9d2cd;stroke-width:1.2}
+    #fig1 .in{fill:#fff;stroke:#c9d2cd;stroke-width:1}
+    #fig1 .ext{fill:#fbf0dc;stroke:#9a5b00;stroke-width:1.4}
+    #fig1 .t{font-size:13px;font-weight:700;fill:#16201c}
+    #fig1 .s{font-size:11.5px;fill:#16201c}
+    #fig1 .m{font-size:10.5px;fill:#56635d}
+    #fig1 .ln{stroke:#56635d;stroke-width:1.4;fill:none}
+    #fig1 .dash{stroke-dasharray:5 4}
+  </style>
+  <!-- users -->
+  <rect class="grp" x="5" y="80" width="150" height="170" rx="8"/>
+  <text class="t" x="80" y="102" text-anchor="middle">People</text>
+  <rect class="in" x="17" y="114" width="126" height="34" rx="5"/><text class="s" x="80" y="135" text-anchor="middle">Barangay secretaries</text>
+  <rect class="in" x="17" y="156" width="126" height="34" rx="5"/><text class="s" x="80" y="177" text-anchor="middle">Liga Reps</text>
+  <rect class="in" x="17" y="198" width="126" height="34" rx="5"/><text class="s" x="80" y="219" text-anchor="middle">Provincial office</text>
+  <text class="m" x="80" y="266" text-anchor="middle">phones · tablets · computers</text>
+
+  <!-- host -->
+  <rect class="box" x="195" y="4" width="220" height="40" rx="6"/>
+  <text class="s" x="305" y="21" text-anchor="middle" font-weight="700">Static web host (HTTPS)</text>
+  <text class="m" x="305" y="36" text-anchor="middle">serves the app's files only, no data</text>
+  <line class="ln dash" x1="305" y1="44" x2="305" y2="66" marker-end="url(#a)"/>
+
+  <!-- app -->
+  <rect class="grp" x="195" y="68" width="220" height="230" rx="8"/>
+  <text class="t" x="305" y="90" text-anchor="middle">Sakto app, in the browser</text>
+  <rect class="in" x="207" y="102" width="196" height="34" rx="5"/><text class="s" x="305" y="123" text-anchor="middle">Screens, checks, printing</text>
+  <rect class="in" x="207" y="144" width="196" height="34" rx="5"/><text class="s" x="305" y="165" text-anchor="middle">Local copy of the list (IndexedDB)</text>
+  <rect class="in" x="207" y="186" width="196" height="34" rx="5"/><text class="s" x="305" y="207" text-anchor="middle">Free reader for IDs and lists</text>
+  <rect class="in" x="207" y="228" width="196" height="34" rx="5"/><text class="s" x="305" y="249" text-anchor="middle">Service worker: works offline</text>
+  <text class="m" x="305" y="285" text-anchor="middle">React · TypeScript · Vite</text>
+
+  <line class="ln" x1="155" y1="165" x2="193" y2="165" marker-end="url(#a)"/>
+
+  <!-- supabase -->
+  <rect class="grp" x="470" y="30" width="190" height="290" rx="8"/>
+  <text class="t" x="565" y="52" text-anchor="middle">Supabase</text>
+  <rect class="in" x="482" y="64" width="166" height="38" rx="5"/><text class="s" x="565" y="81" text-anchor="middle">Auth</text><text class="m" x="565" y="95" text-anchor="middle">sign-in, password reset</text>
+  <rect class="in" x="482" y="110" width="166" height="38" rx="5"/><text class="s" x="565" y="127" text-anchor="middle">Postgres database</text><text class="m" x="565" y="141" text-anchor="middle">row-level security on every table</text>
+  <rect class="in" x="482" y="156" width="166" height="38" rx="5"/><text class="s" x="565" y="173" text-anchor="middle">Storage</text><text class="m" x="565" y="187" text-anchor="middle">private bucket for scan photos</text>
+  <rect class="in" x="482" y="202" width="166" height="38" rx="5"/><text class="s" x="565" y="219" text-anchor="middle">Realtime</text><text class="m" x="565" y="233" text-anchor="middle">scan status updates</text>
+  <rect class="in" x="482" y="248" width="166" height="38" rx="5"/><text class="s" x="565" y="265" text-anchor="middle">Edge Function read-scan</text><text class="m" x="565" y="279" text-anchor="middle">AI reader, holds the AI key</text>
+
+  <line class="ln" x1="415" y1="165" x2="468" y2="165" marker-end="url(#a)" marker-start="url(#a)"/>
+  <text class="m" x="442" y="155" text-anchor="middle">HTTPS</text>
+  <text class="m" x="442" y="182" text-anchor="middle">when</text>
+  <text class="m" x="442" y="195" text-anchor="middle">online</text>
+
+  <!-- openai -->
+  <rect class="ext" x="690" y="240" width="105" height="56" rx="6"/>
+  <text class="s" x="742" y="262" text-anchor="middle" font-weight="700">OpenAI API</text>
+  <text class="m" x="742" y="277" text-anchor="middle">only when the free</text>
+  <text class="m" x="742" y="290" text-anchor="middle">reader is unsure</text>
+  <line class="ln" x1="648" y1="267" x2="688" y2="267" marker-end="url(#a)"/>
+</svg>
+<figcaption>Figure 1. The parts of Sakto and how they connect. The browser holds a full working copy of the list, so encoding continues without signal.</figcaption>
+</figure>
+
+<div class="callout">
+  <b>Design choices in one line each.</b> Offline first, because barangays often have weak signal. The rules live in the database, so
+  security doesn't depend on the app. No custom server, so there is little to run or maintain. Documents are generated from one list,
+  so the masterlist, payroll and certifications can't disagree.
+</div>
+
+<h2>3. The app</h2>
+<div class="two">
+<div>
+  <h3>Technology</h3>
+  <ul>
+    <li><b>React 19</b> and <b>TypeScript</b>, built with <b>Vite</b></li>
+    <li><b>zustand</b> for state, saved to the device in <b>IndexedDB</b></li>
+    <li><b>vite-plugin-pwa</b>: installable, cached for offline use</li>
+    <li><b>tesseract.js</b>: the free on-device reader for IDs and typed lists</li>
+    <li><b>qrcode</b>: the cover sheet's verification code</li>
+    <li><b>@supabase/supabase-js</b>: sign-in, data, photos</li>
+  </ul>
+</div>
+<div>
+  <h3>Main screens</h3>
+  <ul>
+    <li><b>Dashboard</b>: progress, deadlines and what needs attention. Administrators also get <i>All of Iloilo</i>.</li>
+    <li><b>Setup</b> (Liga Rep): year, amount, signatories, deadlines</li>
+    <li><b>Barangays / Tanods</b>: the list, requirements, scanning, tanod limit</li>
+    <li><b>Review</b>: every blocking issue, the ObR check, locking the year</li>
+    <li><b>Print</b> and <b>Templates</b>: the documents, filled in or blank</li>
+    <li><b>Records</b>, <b>Accounts</b> and <b>Help</b> (with problem reports)</li>
+  </ul>
+</div>
+</div>
+
+<h3>Documents</h3>
+<p>
+  The documents are generated in the browser from the list and printed on long bond paper (8.5 × 13 in): the <b>Masterlist</b>, the
+  <b>Provincial Payroll</b> (landscape, with signature boxes A–E), the <b>Submission cover sheet</b> and the <b>Barangay Certification</b>.
+  The cover sheet carries a check code and a QR code built from the award numbers, names, year and amount, so the province can confirm that a
+  printed set matches what was encoded. While any blocking issue remains, every page prints with a <i>DRAFT</i> watermark.
+</p>
+<p>The checks behind the watermark are:</p>
+<ul>
+  <li>a barangay is over its limit;</li>
+  <li>a name is missing;</li>
+  <li>a person is listed twice;</li>
+  <li>an ID photocopy lacks its 3 signatures;</li>
+  <li>the ObR payee or amount doesn't match.</li>
+</ul>
+
+<h2>4. Working offline: how the sync works</h2>
+<figure class="fig">
+<svg id="fig2" viewBox="0 0 800 120" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#56635d"/></marker></defs>
+  <style>#fig2 .st{fill:#fff;stroke:#0E6B57;stroke-width:1.5}#fig2 .h{font-size:12.5px;font-weight:700;fill:#16201c}#fig2 .d{font-size:10.5px;fill:#56635d}#fig2 .l{stroke:#56635d;stroke-width:1.4}</style>
+  <g>
+    <rect class="st" x="2" y="10" width="142" height="92" rx="7"/><text class="h" x="73" y="34" text-anchor="middle">1. Edit</text><text class="d" x="73" y="54" text-anchor="middle">type, scan or</text><text class="d" x="73" y="68" text-anchor="middle">remove a tanod</text>
+    <rect class="st" x="166" y="10" width="142" height="92" rx="7"/><text class="h" x="237" y="34" text-anchor="middle">2. Saved here</text><text class="d" x="237" y="54" text-anchor="middle">at once, on the device,</text><text class="d" x="237" y="68" text-anchor="middle">marked "waiting"</text>
+    <rect class="st" x="330" y="10" width="142" height="92" rx="7"/><text class="h" x="401" y="34" text-anchor="middle">3. Upload</text><text class="d" x="401" y="54" text-anchor="middle">when online, about</text><text class="d" x="401" y="68" text-anchor="middle">1.5 s after editing</text>
+    <rect class="st" x="494" y="10" width="142" height="92" rx="7"/><text class="h" x="565" y="34" text-anchor="middle">4. Download</text><text class="d" x="565" y="54" text-anchor="middle">every minute, on return</text><text class="d" x="565" y="68" text-anchor="middle">to the app or online</text>
+    <rect class="st" x="658" y="10" width="140" height="92" rx="7"/><text class="h" x="728" y="34" text-anchor="middle">5. Merge</text><text class="d" x="728" y="54" text-anchor="middle">online copy, except</text><text class="d" x="728" y="68" text-anchor="middle">edits still waiting</text>
+    <line class="l" x1="144" y1="56" x2="164" y2="56" marker-end="url(#b)"/>
+    <line class="l" x1="308" y1="56" x2="328" y2="56" marker-end="url(#b)"/>
+    <line class="l" x1="472" y1="56" x2="492" y2="56" marker-end="url(#b)"/>
+    <line class="l" x1="636" y1="56" x2="656" y2="56" marker-end="url(#b)"/>
+  </g>
+</svg>
+<figcaption>Figure 2. Every change is saved on the device first. Uploading and downloading happen in the background and never run at the same time.</figcaption>
+</figure>
+<ul>
+  <li><b>What each device downloads.</b>
+    <ul>
+      <li>A secretary: only their barangay.</li>
+      <li>A Liga Rep: the whole municipality.</li>
+      <li>An administrator: the municipality they opened, read-only. An administrator's device never uploads.</li>
+    </ul>
+  </li>
+  <li><b>Conflicts.</b> The last change to reach Supabase wins. A row edited on this device and not yet uploaded is kept, never overwritten by the download. Row order is saved separately (<code>set_roster_order</code>), so reordering on two devices doesn't duplicate anyone.</li>
+  <li><b>Locked lists.</b> Once the Liga Rep locks the year, the database refuses secretaries' changes. The app says why and offers to discard unsent changes.</li>
+  <li><b>Always visible.</b> A badge on every screen says whether the work has reached Supabase ("Saved on this device · 3 waiting for internet", "All changes saved online").</li>
+  <li><b>What needs internet.</b> The first sign-in on a device, uploading scan photos, the AI reader, tanod limit changes and problem reports. Encoding, reviewing and printing work offline.</li>
+</ul>
+
+<h2>5. Scanning: from photo to list</h2>
+<figure class="fig">
+<svg id="fig3" viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#56635d"/></marker></defs>
+  <style>#fig3 .st{fill:#fff;stroke:#0E6B57;stroke-width:1.5}#fig3 .ex{fill:#fbf0dc;stroke:#9a5b00;stroke-width:1.4}#fig3 .dm{fill:#dcefe8;stroke:#0E6B57;stroke-width:1.5}#fig3 .h{font-size:12px;font-weight:700;fill:#16201c}#fig3 .d{font-size:10.3px;fill:#56635d}#fig3 .l{stroke:#56635d;stroke-width:1.4;fill:none}#fig3 .lb{font-size:10.5px;font-weight:700;fill:#0E6B57}</style>
+  <rect class="st" x="2" y="14" width="118" height="64" rx="7"/><text class="h" x="61" y="40" text-anchor="middle">Photo</text><text class="d" x="61" y="56" text-anchor="middle">camera or gallery,</text><text class="d" x="61" y="69" text-anchor="middle">ID or written list</text>
+  <rect class="st" x="140" y="14" width="140" height="64" rx="7"/><text class="h" x="210" y="40" text-anchor="middle">Shrink and upload</text><text class="d" x="210" y="56" text-anchor="middle">to private storage,</text><text class="d" x="210" y="69" text-anchor="middle">one folder per barangay</text>
+  <rect class="st" x="300" y="14" width="130" height="64" rx="7"/><text class="h" x="365" y="40" text-anchor="middle">Free reader</text><text class="d" x="365" y="56" text-anchor="middle">on the device</text><text class="d" x="365" y="69" text-anchor="middle">(tesseract.js)</text>
+  <polygon class="dm" points="490,14 535,46 490,78 445,46"/><text class="h" x="490" y="50" text-anchor="middle">Sure?</text>
+  <rect class="st" x="560" y="14" width="128" height="64" rx="7"/><text class="h" x="624" y="36" text-anchor="middle">Review pop-up</text><text class="d" x="624" y="52" text-anchor="middle">photo beside fields;</text><text class="d" x="624" y="65" text-anchor="middle">unsure ones highlighted</text>
+  <rect class="st" x="706" y="14" width="92" height="64" rx="7"/><text class="h" x="752" y="40" text-anchor="middle">On the list</text><text class="d" x="752" y="56" text-anchor="middle">after the</text><text class="d" x="752" y="69" text-anchor="middle">secretary checks</text>
+  <line class="l" x1="120" y1="46" x2="138" y2="46" marker-end="url(#c)"/>
+  <line class="l" x1="280" y1="46" x2="298" y2="46" marker-end="url(#c)"/>
+  <line class="l" x1="430" y1="46" x2="443" y2="46" marker-end="url(#c)"/>
+  <line class="l" x1="535" y1="46" x2="558" y2="46" marker-end="url(#c)"/><text class="lb" x="546" y="40" text-anchor="middle">Yes</text>
+  <line class="l" x1="688" y1="46" x2="704" y2="46" marker-end="url(#c)"/>
+  <path class="l" d="M490 78 V150 H468" marker-end="url(#c)"/><text class="lb" x="500" y="118">No</text>
+  <rect class="st" x="250" y="122" width="216" height="64" rx="7"/><text class="h" x="358" y="146" text-anchor="middle">Edge Function read-scan</text><text class="d" x="358" y="162" text-anchor="middle">runs as the signed-in person, so it can</text><text class="d" x="358" y="175" text-anchor="middle">only open photos that person may see</text>
+  <rect class="ex" x="560" y="122" width="200" height="64" rx="7"/><text class="h" x="660" y="146" text-anchor="middle">OpenAI reads the photo</text><text class="d" x="660" y="162" text-anchor="middle">returns names, birthdate and a</text><text class="d" x="660" y="175" text-anchor="middle">confidence score for each field</text>
+  <line class="l" x1="466" y1="154" x2="558" y2="154" marker-end="url(#c)"/>
+  <text class="d" x="512" y="147" text-anchor="middle">photo</text>
+  <path class="l" d="M660 122 V100 H640 V80" marker-end="url(#c)"/>
+  <text class="d" x="668" y="105">fields + confidence</text>
+</svg>
+<figcaption>Figure 3. The free reader handles clear, typed IDs and lists on its own. The AI reader is only asked when the free reader isn't sure, which is always the case for handwriting.</figcaption>
+</figure>
+<ul>
+  <li><b>Scan types.</b>
+    <ul>
+      <li>An <i>ID</i> (front, and the back if needed) becomes one tanod.</li>
+      <li>A <i>list</i> (a typed or handwritten page) becomes one row per person, shown as a table to tick and correct. Names already listed, and rows past the limit, start unticked.</li>
+      <li>A <i>document</i> photo (certification, designation, SPA) is attached as proof.</li>
+    </ul>
+  </li>
+  <li><b>AI provider.</b> OpenAI by default (Responses API with a strict JSON schema; model set by <code>OPENAI_MODEL</code>). Anthropic Claude is supported as an alternative (<code>AI_PROVIDER</code>). The API key lives only in the Edge Function's secrets, never in the app or on devices.</li>
+  <li><b>Photo lifetime.</b> Photos stay until the year is closed, then they are deleted permanently.</li>
+</ul>
+
+<h2>6. Data model</h2>
+<figure class="fig">
+<svg id="fig4" viewBox="0 0 800 228" xmlns="http://www.w3.org/2000/svg">
+  <style>#fig4 .e{fill:#fff;stroke:#0E6B57;stroke-width:1.5}#fig4 .r{fill:#eef3f0;stroke:#c9d2cd;stroke-width:1.2}#fig4 .h{font-size:12.5px;font-weight:700;fill:#16201c;font-family:Consolas,'Courier New',monospace}#fig4 .d{font-size:10.3px;fill:#56635d}#fig4 .l{stroke:#56635d;stroke-width:1.4}</style>
+  <rect class="r" x="2" y="8" width="180" height="56" rx="6"/><text class="h" x="92" y="31" text-anchor="middle">municipalities</text><text class="d" x="92" y="49" text-anchor="middle">43 cities and towns</text>
+  <rect class="r" x="2" y="138" width="180" height="62" rx="6"/><text class="h" x="92" y="161" text-anchor="middle">barangays</text><text class="d" x="92" y="177" text-anchor="middle">1,719, each with its</text><text class="d" x="92" y="190" text-anchor="middle">tanod limit</text>
+  <rect class="e" x="232" y="8" width="200" height="56" rx="6"/><text class="h" x="332" y="31" text-anchor="middle">submissions</text><text class="d" x="332" y="49" text-anchor="middle">one per municipality per year</text>
+  <rect class="e" x="232" y="138" width="200" height="62" rx="6"/><text class="h" x="332" y="161" text-anchor="middle">roster_entries</text><text class="d" x="332" y="177" text-anchor="middle">who is on a year's list, with</text><text class="d" x="332" y="190" text-anchor="middle">position, ID signatures, order</text>
+  <rect class="e" x="482" y="138" width="170" height="62" rx="6"/><text class="h" x="567" y="161" text-anchor="middle">tanods</text><text class="d" x="567" y="177" text-anchor="middle">the person, kept</text><text class="d" x="567" y="190" text-anchor="middle">from year to year</text>
+  <rect class="e" x="482" y="8" width="170" height="56" rx="6"/><text class="h" x="567" y="31" text-anchor="middle">profiles</text><text class="d" x="567" y="49" text-anchor="middle">an account and its role</text>
+  <rect class="r" x="682" y="138" width="116" height="62" rx="6"/><text class="h" x="740" y="161" text-anchor="middle">tanod_limit_</text><text class="h" x="740" y="176" text-anchor="middle">changes</text><text class="d" x="740" y="191" text-anchor="middle">append-only log</text>
+  <line class="l" x1="92" y1="64" x2="92" y2="138"/>
+  <line class="l" x1="182" y1="36" x2="232" y2="36"/>
+  <line class="l" x1="332" y1="64" x2="332" y2="138"/>
+  <line class="l" x1="182" y1="169" x2="232" y2="169"/>
+  <line class="l" x1="432" y1="169" x2="482" y2="169"/>
+  <path class="l" d="M92 200 V222 H740 V200" fill="none"/>
+</svg>
+<figcaption>Figure 4. The core tables. Each year's list is a <code>submission</code>. A tanod who serves again next year is the same <code>tanods</code> row, so their history builds up over the years.</figcaption>
+</figure>
+<table>
+  <tr><th style="width:26%">Table</th><th>Holds</th></tr>
+  <tr><td><code>municipalities</code>, <code>barangays</code></td><td>The provincial reference list. Only administrators can change it. Every limit change goes through <code>set_tanod_limit</code> and is logged.</td></tr>
+  <tr><td><code>profiles</code></td><td>One per account: name, phone, role (pending, secretary, rep, admin), municipality and barangay. New sign-ups start as <i>pending</i>.</td></tr>
+  <tr><td><code>submissions</code></td><td>A municipality's year: status, amount per tanod, signatories, ObR details, barangay deadline.</td></tr>
+  <tr><td><code>tanods</code>, <code>roster_entries</code></td><td>The people, and who is on which year's list in which barangay, in order.</td></tr>
+  <tr><td><code>barangay_requirements</code></td><td>Per barangay per year: certification, proof of designation, SPA, focal person and phone.</td></tr>
+  <tr><td><code>tanod_departures</code></td><td>Why someone on last year's list left: resigned, removed, deceased, moved, other. Powers the Records page.</td></tr>
+  <tr><td><code>scans</code></td><td>Each scanned ID, list or document: kind, status (uploading, reading, ready, failed, saved), what was read, photo locations.</td></tr>
+  <tr><td><code>year_deadlines</code></td><td>The provincial deadline for municipalities, per year.</td></tr>
+  <tr><td><code>tanod_limit_changes</code></td><td>Old and new limit, the year, the reason (ordinance or resolution), who and when. Nobody can edit or delete it.</td></tr>
+  <tr><td><code>support_requests</code></td><td>Problem reports from the Help page, with technical details, for the provincial office.</td></tr>
+</table>
+<p class="note">Database functions: <code>set_roster_order</code> (saves list order), <code>municipality_progress</code> (other barangays' counts for secretaries) and <code>set_tanod_limit</code> (administrators only).</p>
+
+<h2>7. The year, from start to close</h2>
+<figure class="fig">
+<svg id="fig5" viewBox="0 0 800 150" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#56635d"/></marker></defs>
+  <style>#fig5 .s0{fill:#eef3f0;stroke:#c9d2cd;stroke-width:1.3}#fig5 .s1{fill:#fff;stroke:#0E6B57;stroke-width:1.6}#fig5 .h{font-size:13px;font-weight:700;fill:#16201c}#fig5 .d{font-size:10.3px;fill:#56635d}#fig5 .l{stroke:#56635d;stroke-width:1.4;fill:none}#fig5 .lb{font-size:10px;fill:#0E6B57;font-weight:700}</style>
+  <rect class="s0" x="2" y="40" width="160" height="70" rx="8"/><text class="h" x="82" y="66" text-anchor="middle">Not started</text><text class="d" x="82" y="84" text-anchor="middle">until the Liga Rep</text><text class="d" x="82" y="97" text-anchor="middle">opens the year</text>
+  <rect class="s1" x="212" y="40" width="170" height="70" rx="8"/><text class="h" x="297" y="66" text-anchor="middle">Open</text><text class="d" x="297" y="84" text-anchor="middle">secretaries encode;</text><text class="d" x="297" y="97" text-anchor="middle">the Rep reviews</text>
+  <rect class="s1" x="432" y="40" width="170" height="70" rx="8"/><text class="h" x="517" y="66" text-anchor="middle">Submitted</text><text class="d" x="517" y="84" text-anchor="middle">secretaries locked out;</text><text class="d" x="517" y="97" text-anchor="middle">the Rep can still fix</text>
+  <rect class="s1" x="652" y="40" width="146" height="70" rx="8"/><text class="h" x="725" y="66" text-anchor="middle">Closed</text><text class="d" x="725" y="84" text-anchor="middle">read-only; photos</text><text class="d" x="725" y="97" text-anchor="middle">deleted for good</text>
+  <line class="l" x1="162" y1="75" x2="210" y2="75" marker-end="url(#d)"/>
+  <line class="l" x1="382" y1="75" x2="430" y2="75" marker-end="url(#d)"/><text class="lb" x="406" y="68" text-anchor="middle">lock</text>
+  <line class="l" x1="602" y1="75" x2="650" y2="75" marker-end="url(#d)"/><text class="lb" x="626" y="68" text-anchor="middle">close</text>
+  <path class="l" d="M517 110 C 517 140, 297 140, 297 112" marker-end="url(#d)"/><text class="lb" x="407" y="140" text-anchor="middle">reopen for secretaries</text>
+  <path class="l" d="M725 40 C 725 8, 517 8, 517 38" marker-end="url(#d)"/><text class="lb" x="621" y="16" text-anchor="middle">reopen for corrections</text>
+</svg>
+<figcaption>Figure 5. Each municipality's year moves through four states. Only the Liga Rep moves it, and the database enforces what each state allows.</figcaption>
+</figure>
+<p>
+  Deadlines run alongside: the provincial office sets one date for all municipalities, and each Liga Rep sets one for their barangays. A banner
+  counts down on every screen and turns red 7 days before. Next year, the Rep opens a new year and secretaries can copy last year's tanods in one step,
+  recording why anyone who left is gone.
+</p>
+
+<h2>8. Security and privacy</h2>
+<h3>Who can do what</h3>
+<table>
+  <tr><th>Action</th><th class="c" style="width:14%">Secretary</th><th class="c" style="width:14%">Liga Rep</th><th class="c" style="width:16%">Provincial office</th></tr>
+  <tr><td>See their own barangay's list</td><td class="c yes">Yes</td><td class="c yes">Yes</td><td class="c yes">Yes</td></tr>
+  <tr><td>Change their own barangay's list</td><td class="c yes">While open</td><td class="c yes">Until closed</td><td class="c no">No (read-only)</td></tr>
+  <tr><td>See and change every barangay in the municipality</td><td class="c no">Progress only</td><td class="c yes">Yes</td><td class="c yes">See only</td></tr>
+  <tr><td>Lock, reopen and close the year</td><td class="c no">No</td><td class="c yes">Yes</td><td class="c no">No</td></tr>
+  <tr><td>Set the barangay deadline / the provincial deadline</td><td class="c no">No</td><td class="c yes">Barangay</td><td class="c yes">Provincial</td></tr>
+  <tr><td>Approve accounts</td><td class="c no">No</td><td class="c yes">Secretaries</td><td class="c yes">Everyone</td></tr>
+  <tr><td>Change a barangay's tanod limit (logged)</td><td class="c no">No</td><td class="c no">No</td><td class="c yes">Yes</td></tr>
+  <tr><td>See every municipality, problem reports</td><td class="c no">No</td><td class="c no">No</td><td class="c yes">Yes</td></tr>
+</table>
+
+<h3>How it is enforced</h3>
+<ul>
+  <li><b>Row-level security on every table.</b> Shared helper functions decide access from the signed-in person's profile: <code>can_access_barangay</code>, <code>can_edit_roster</code>, <code>can_manage_municipality</code>, <code>can_read_municipality</code>, <code>my_role</code>. A request the rules don't allow returns nothing or is refused, whatever the app sends.</li>
+  <li><b>Changes that touch several rows</b> (list order, tanod limits) go through database functions that check the role first.</li>
+  <li><b>Accounts.</b>
+    <ul>
+      <li>Self sign-up creates a <i>pending</i> account with no access until approved.</li>
+      <li>Nobody can raise their own role; a database trigger blocks it.</li>
+      <li>The two built-in administrator accounts (OPPDC-ADMIN, DEV-Admin) sign in with a username and must choose a new password at their first sign-in.</li>
+      <li>Only bcrypt hashes of their starting passwords are stored in the setup script.</li>
+    </ul>
+  </li>
+  <li><b>Keys.</b>
+    <ul>
+      <li>The app holds only Supabase's publishable key, which is safe to expose because the security rules do the protecting.</li>
+      <li>The service-role key is never in the app.</li>
+      <li>The AI key exists only in the Edge Function's secrets.</li>
+    </ul>
+  </li>
+  <li><b>Data in transit and at rest.</b> All traffic uses HTTPS. Scan photos sit in a private storage bucket, readable only by people who can see that barangay, and are deleted when the year closes. Each device keeps a copy of its own list for offline work; signing out warns if anything hasn't been uploaded.</li>
+</ul>
+<div class="callout warn">
+  <b>Data privacy (RA 10173).</b> Sakto holds personal data: names, and ID photos while a year is open. When the AI reader is used, a photo is
+  sent to OpenAI to be read. Before the pilot:
+  <ul>
+    <li>the privacy notice must name OpenAI;</li>
+    <li>tanods must give consent for their ID photos;</li>
+    <li>demo material must use team members' own IDs, with their consent.</li>
+  </ul>
+</div>
+
+<h2>9. Deployment and operations</h2>
+<table>
+  <tr><th style="width:22%">Part</th><th>How it is set up</th></tr>
+  <tr><td><b>Database</b></td><td>Run the scripts in <code>supabase/migrations</code> in order in the Supabase SQL Editor, 0000 to 1000 (eleven scripts). Then run <code>supabase/seed/admin_accounts.sql</code> once, to create the two administrator accounts.</td></tr>
+  <tr><td><b>AI reader</b></td><td>Deploy the Edge Function <code>read-scan</code> with JWT verification on. Add the secret <code>OPENAI_API_KEY</code>; <code>OPENAI_MODEL</code> and <code>AI_PROVIDER</code> are optional. Set a monthly spending limit on the OpenAI account.</td></tr>
+  <tr><td><b>App</b></td><td>Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> (optional: <code>VITE_SUPPORT_PHONE</code>, <code>VITE_SUPPORT_EMAIL</code>). Build with <code>npm run build</code>, then put the static files on any HTTPS host. HTTPS is required for the camera, installing and offline use.</td></tr>
+  <tr><td><b>Updates</b></td><td>A new build is picked up the next time the app is opened. People are asked before it switches, so no one loses an edit.</td></tr>
+  <tr><td><b>Backups</b></td><td>Supabase's own database backups (depending on plan), plus a backup file anyone can save from Setup.</td></tr>
+  <tr><td><b>Hosting choice</b></td><td>Supabase's cloud by default. If policy requires the data on a provincial server, Supabase can be self-hosted at the Capitol; only the app's server address changes.</td></tr>
+</table>
+
+<h2>10. Known limits and next steps</h2>
+<ul>
+  <li>The AI reader has been built and type-checked but not yet tried on real IDs and handwritten lists. Model choice and cost should be measured during the pilot.</li>
+  <li>Username accounts have no mailbox, so a forgotten password is reset by the Sakto team in the SQL Editor; the setup script has the command.</li>
+  <li>Some things need internet: the first sign-in on a device, photo uploads, limit changes and the AI reader. A file hand-off for barangays with no signal is planned.</li>
+  <li>Hosting (the HTTPS address) is still to be chosen.</li>
+  <li>A dedicated mobile scanning app (Expo) is planned. It would use the same Supabase back end and rules.</li>
+</ul>
+
+<div id="report" style="display:none">DONE</div>
+</body>
+</html>

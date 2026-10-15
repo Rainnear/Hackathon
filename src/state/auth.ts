@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js'
 import { create } from 'zustand'
 
 import { fetchProfile, supabase, supabaseConfigured, type Profile } from '../lib/supabase'
+import { leaveMunicipality } from './adminView'
 
 type Status = 'loading' | 'signedOut' | 'signedIn' | 'recovery'
 
@@ -13,6 +14,9 @@ interface AuthState {
   profileLoaded: boolean
   /** True when the profile shown is the cached copy because the network was unavailable. */
   offline: boolean
+  /** Set once the person has chosen a new password this session (see mustChangePassword). */
+  passwordChanged: boolean
+  markPasswordChanged: () => void
   refreshProfile: () => Promise<void>
   signOut: () => Promise<void>
   finishRecovery: () => void
@@ -43,6 +47,8 @@ export const useAuth = create<AuthState>()((set, get) => ({
   profile: null,
   profileLoaded: false,
   offline: false,
+  passwordChanged: false,
+  markPasswordChanged: () => set({ passwordChanged: true }),
 
   refreshProfile: async () => {
     const session = get().session
@@ -60,7 +66,8 @@ export const useAuth = create<AuthState>()((set, get) => ({
     // Local scope signs out on this device even without internet.
     await supabase.auth.signOut({ scope: 'local' })
     writeCache(null)
-    set({ status: 'signedOut', session: null, profile: null, profileLoaded: false })
+    leaveMunicipality()
+    set({ status: 'signedOut', session: null, profile: null, profileLoaded: false, passwordChanged: false })
   },
 
   finishRecovery: () => set({ status: 'signedIn' }),
@@ -91,3 +98,10 @@ if (supabaseConfigured) {
     }, 0)
   })
 }
+
+/**
+ * Accounts made with a starting password (the built-in administrator accounts) carry
+ * app_metadata.must_change_password until the password really changes; Supabase removes the mark then.
+ */
+export const useMustChangePassword = () =>
+  useAuth((s) => s.status === 'signedIn' && !s.passwordChanged && s.session?.user.app_metadata?.must_change_password === true)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { plural } from '../domain/format'
 import type { Barangay, DocKey } from '../domain/types'
-import { createScan, photoUrl, type ScanKind } from '../lib/scans'
+import { createScan, photoUrl, scanErrorMessage, type ScanKind } from '../lib/scans'
 import { useEditable } from '../state/access'
 import { useScans } from '../state/scans'
 import { useStore } from '../state/store'
@@ -20,7 +20,8 @@ interface Photo {
  * "Scan IDs": pick several ID photos at once (camera or gallery on a phone, files on a computer), paired
  * front + back in the order chosen. They upload, get read, and open in the review pop-up one after another.
  */
-export function ScanUpload({ b, open, onClose }: { b: Barangay; open: boolean; onClose: () => void }) {
+export function ScanUpload({ b, open, onClose, mode = 'id' }: { b: Barangay; open: boolean; onClose: () => void; mode?: 'id' | 'list' }) {
+  const list = mode === 'list'
   const remote = useStore((s) => s.remote)
   const online = useSync((s) => s.online)
   const review = useScans((s) => s.review)
@@ -43,7 +44,8 @@ export function ScanUpload({ b, open, onClose }: { b: Barangay; open: boolean; o
     if (!imgs.length) return toast('Choose photos (JPG or PNG).')
     setPhotos((ps) => [...ps, ...imgs.map((file) => ({ key: crypto.randomUUID?.() ?? String(Math.random()), file, url: URL.createObjectURL(file) }))])
   }
-  const ids: Photo[][] = paired ? photos.reduce<Photo[][]>((acc, p, i) => (i % 2 ? acc[acc.length - 1].push(p) : acc.push([p]), acc), []) : photos.map((p) => [p])
+  // A list: every photo is one page. IDs: photos pair up as front + back.
+  const ids: Photo[][] = paired && !list ? photos.reduce<Photo[][]>((acc, p, i) => (i % 2 ? acc[acc.length - 1].push(p) : acc.push([p]), acc), []) : photos.map((p) => [p])
   const swap = (i: number) =>
     setPhotos((ps) => {
       const next = [...ps]
@@ -73,36 +75,44 @@ export function ScanUpload({ b, open, onClose }: { b: Barangay; open: boolean; o
     setProgress({ done: 0, total: ids.length })
     const created: string[] = []
     let failed = 0
+    let reason = ''
     for (const [front, back] of ids) {
       try {
-        const scan = await createScan({ submissionId: remote.submissionId, barangayId: bid, kind: 'id', front: front.file, back: back?.file ?? null })
+        const scan = await createScan({ submissionId: remote.submissionId, barangayId: bid, kind: mode, front: front.file, back: back?.file ?? null })
         upsert(scan)
         created.push(scan.id)
-      } catch {
+      } catch (e) {
         failed++
+        reason ||= scanErrorMessage(e)
       }
       setProgress((p) => p && { ...p, done: p.done + 1 })
     }
     reset()
     onClose()
-    if (failed) toast(`${plural(failed, 'ID')} could not be uploaded. Check your internet and try those again.`)
+    if (failed) toast(`${plural(failed, list ? 'page' : 'ID')} could not be uploaded. ${reason}`)
     if (created.length) review(created)
   }
 
   return (
-    <Modal open={open} onClose={close} title={`Scan IDs · Brgy. ${b.name}`} wide>
+    <Modal open={open} onClose={close} title={`${list ? 'Scan a list' : 'Scan IDs'} · Brgy. ${b.name}`} wide>
       <div className="modal-bd stack">
         {progress ? (
           <div className="stack upload-progress" role="status">
-            <p className="big-line">Uploading and reading ID {Math.min(progress.done + 1, progress.total)} of {progress.total}…</p>
+            <p className="big-line">Uploading and reading {list ? 'page' : 'ID'} {Math.min(progress.done + 1, progress.total)} of {progress.total}…</p>
             <span className="bar big"><i style={{ width: `${(progress.done / progress.total) * 100}%` }} /></span>
             <p className="note">Keep this window open. The review starts as soon as they're done.</p>
           </div>
         ) : (
           <>
-            <p>
-              Choose the photos of the tanods' IDs. You can pick many at once. Take <b>the front, then the back</b> of each ID, so they stay together.
-            </p>
+            {list ? (
+              <p>
+                Choose a photo of each page of the list, <b>typed or handwritten</b>. Take each page straight on, in good light, with the whole page in view. Every line becomes one tanod, and you check them all before anything is added.
+              </p>
+            ) : (
+              <p>
+                Choose the photos of the tanods' IDs. You can pick many at once. Take <b>the front, then the back</b> of each ID, so they stay together.
+              </p>
+            )}
             <label
               className={`drop ${dragging ? 'over' : ''}`}
               onDragOver={(e) => {
@@ -122,31 +132,31 @@ export function ScanUpload({ b, open, onClose }: { b: Barangay; open: boolean; o
             </label>
             {photos.length > 0 && (
               <>
-                <label className="check-inline">
+                <label className="check-inline" hidden={list}>
                   <input type="checkbox" checked={paired} onChange={(e) => setPaired(e.target.checked)} />
                   Each ID has a front and a back photo
                 </label>
                 <ol className="id-pairs">
                   {ids.map((group, i) => (
                     <li key={group[0].key}>
-                      <b>ID {i + 1}</b>
+                      <b>{list ? 'Page' : 'ID'} {i + 1}</b>
                       <div className="pair">
                         {group.map((p, side) => (
                           <figure key={p.key}>
                             <img src={p.url} alt={`ID ${i + 1} ${side ? 'back' : 'front'}`} />
-                            <figcaption>{side ? 'Back' : 'Front'}</figcaption>
+                            <figcaption>{list ? '' : side ? 'Back' : 'Front'}</figcaption>
                           </figure>
                         ))}
-                        {paired && group.length === 1 && <div className="missing">No back photo</div>}
+                        {paired && !list && group.length === 1 && <div className="missing">No back photo</div>}
                       </div>
                       <div className="row">
-                        {paired && group.length === 2 && <button type="button" className="btn sm" onClick={() => swap(i)}>Swap front and back</button>}
+                        {paired && !list && group.length === 2 && <button type="button" className="btn sm" onClick={() => swap(i)}>Swap front and back</button>}
                         <button type="button" className="btn sm danger" onClick={() => removeId(group)}>Remove</button>
                       </div>
                     </li>
                   ))}
                 </ol>
-                {ids.length > room && (
+                {!list && ids.length > room && (
                   <div className="banner">
                     Brgy. {b.name} has room for {plural(room, 'more tanod')} (limit {b.limit}). Every ID still uploads; the extra ones wait in "Scans to review" until there is room.
                   </div>
@@ -161,7 +171,7 @@ export function ScanUpload({ b, open, onClose }: { b: Barangay; open: boolean; o
         <div className="modal-ft">
           <button type="button" className="btn" onClick={close}>Cancel</button>
           <button type="button" className="btn primary big" disabled={!ids.length || !online || !bid} onClick={start}>
-            Upload and read {ids.length ? plural(ids.length, 'ID') : 'IDs'}
+            Upload and read {ids.length ? plural(ids.length, list ? 'page' : 'ID') : list ? 'pages' : 'IDs'}
           </button>
         </div>
       )}
@@ -193,7 +203,7 @@ export function DocPhoto({ b, k }: { b: Barangay; k: DocKey }) {
       setDoc(b.name, k, true)
       toast('Photo attached and marked as received.')
     } catch (e) {
-      toast(`The photo did not upload: ${(e as Error).message}`)
+      toast(scanErrorMessage(e))
     } finally {
       setBusy(false)
     }
