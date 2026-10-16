@@ -9,6 +9,7 @@ import { ROLE_LABELS } from '../lib/supabase'
 import { peso } from '../domain/format'
 import type { Analysis } from '../domain/analyze'
 import type { Tone } from '../domain/types'
+import { setupSteps, stepsLeft } from '../domain/setupSteps'
 import { Icon, NavIcon } from './icons'
 import { SyncBadge } from './SyncStatus'
 import { useSafeSignOut } from '../state/access'
@@ -65,12 +66,18 @@ function useNavItems(route: Route, A: Analysis): NavItem[] {
   }
   const setupIssues = A.issues.filter((i) => i.kind === 'setup')
   const setupErrs = setupIssues.filter((i) => i.level === 'error').length
+  // Steps of Setup still missing something (a skipped step, a blank deadline): a reminder on every page.
+  const setupLeft = stepsLeft(setupSteps(sub, null)).length
   const total = sub.brgys.length
   const items: NavItem[] = [
     { to: { page: 'dashboard' }, label: 'Dashboard', icon: NavIcon.home },
     {
       to: { page: 'setup' }, label: 'Setup', step: 'Step 1', icon: NavIcon.setup,
-      badge: { text: setupErrs ? String(setupErrs) : setupIssues.length ? 'Check' : 'Done', tone: setupErrs ? 'bad' : setupIssues.length ? 'warn' : 'ok' },
+      badge: setupErrs
+        ? { text: String(setupErrs), tone: 'bad' }
+        : setupLeft
+          ? { text: `${setupLeft} left`, tone: 'warn' }
+          : { text: setupIssues.length ? 'Check' : 'Done', tone: setupIssues.length ? 'warn' : 'ok' },
     },
     {
       to: { page: 'barangays', brgy: lastBrgy }, label: 'Barangays', step: 'Step 2', icon: NavIcon.barangays,
@@ -176,8 +183,19 @@ export function Sidebar({ route, A }: { route: Route; A: Analysis }) {
   const items = useNavItems(route, A)
   const profile = useAuth((s) => s.profile)
   const offline = useAuth((s) => s.offline)
-  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [saved, setCollapsed] = useState(readCollapsed)
+  // The Liga Rep's Setup is a carousel with its own checklist: the menu folds to icons there to give it room.
+  // Opening it there lasts until another page; the remembered choice is for every other page.
+  const wizard = route.page === 'setup' && profile?.role !== 'secretary'
+  const [peek, setPeek] = useState(false)
+  const [peekPage, setPeekPage] = useState(route.page)
+  if (peekPage !== route.page) {
+    setPeekPage(route.page)
+    setPeek(false)
+  }
+  const collapsed = wizard ? !peek : saved
   const toggle = () => {
+    if (wizard) return setPeek(!peek)
     setCollapsed(!collapsed)
     try {
       localStorage.setItem(SIDE_KEY, collapsed ? '0' : '1')

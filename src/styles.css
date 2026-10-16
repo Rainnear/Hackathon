@@ -1118,3 +1118,44 @@ ol.how { list-style: none; margin: 0; padding: 0; display: grid; grid-template-c
 .phone-pair-bd img, .phone-pair-bd .qr-wait { width: 220px; height: 220px; max-width: 100%; background: #fff; border-radius: var(--r); flex: none }
 .phone-pair-bd .qr-wait { display: grid; place-items: center; color: #5C6A63; font-size: var(--t-sm); border: 1px dashed var(--line-strong) }
 .phone-pair-bd ol { flex: 1 1 260px; margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: var(--s2) }
+
+/* ---------- Setup as a carousel: one step in the middle, the checklist on the right ---------- */
+.setup-flow { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--s4); align-items: start }
+.setup-card { display: flex; flex-direction: column; box-shadow: var(--shadow); border-radius: 16px; min-height: 420px }
+.setup-hd { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s4) var(--s5) var(--s3); border-bottom: 1px solid var(--line) }
+.setup-hd h3 { font-size: var(--t-xl) }
+.setup-dots { display: flex; gap: 6px; margin-top: var(--s2) }
+.setup-dots i { width: 28px; height: 6px; border-radius: 3px; background: var(--line) }
+.setup-dots i.ok { background: var(--ok) }
+.setup-dots i.skip { background: var(--warn) }
+.setup-dots i.on { background: var(--accent); width: 44px }
+.setup-bd { flex: 1; padding: var(--s5); display: flex; flex-direction: column; gap: var(--s4); animation: setup-in .18s ease-out }
+@keyframes setup-in { from { opacity: 0; transform: translateX(12px) } }
+.setup-ft { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); padding: var(--s3) var(--s5); border-top: 1px solid var(--line); background: var(--bg); border-radius: 0 0 16px 16px }
+.setup-track { position: sticky; top: calc(var(--s3) + env(safe-area-inset-top, 0px)); box-shadow: var(--shadow); border-radius: 16px }
+ol.track-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px }
+.track {
+  font: inherit; color: var(--ink); width: 100%; display: flex; align-items: flex-start; gap: var(--s3); text-align: left;
+  padding: var(--s2); border: 0; border-radius: var(--r-sm); background: none; cursor: pointer; min-height: 52px;
+}
+.track:hover { background: var(--sunk) }
+.track[aria-current="step"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent) }
+.track-dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800; background: var(--sunk); color: var(--muted); border: 2px solid var(--line-strong) }
+.track.done .track-dot { background: var(--ok); border-color: var(--ok); color: var(--surface) }
+.track.check .track-dot { background: var(--warn-soft); border-color: var(--warn); color: var(--warn) }
+.track.skipped .track-dot { background: var(--warn); border-color: var(--warn); color: var(--surface) }
+.track.optional:not(.done) .track-dot { border-style: dashed }
+.track-t { display: flex; flex-direction: column; line-height: 1.3; min-width: 0 }
+.track-t b { font-size: var(--t-md) }
+.track-t small { font-size: var(--t-xs); color: var(--muted); overflow-wrap: anywhere }
+.track.skipped small { color: var(--warn); font-weight: 600 }
+@media (max-width: 1100px) {
+  .setup-flow { grid-template-columns: minmax(0, 1fr) }
+  .setup-track { position: static }
+}
+@media (max-width: 640px) {
+  .setup-card { min-height: 0 }
+  .setup-hd, .setup-bd, .setup-ft { padding-inline: var(--s4) }
+  .setup-ft .btn.primary { flex: 1 }
+}
+@media (prefers-reduced-motion: reduce) { .setup-bd { animation: none } }

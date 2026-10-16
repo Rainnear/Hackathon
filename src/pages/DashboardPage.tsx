@@ -5,6 +5,7 @@ import { Box, Chip, InfoTip } from '../components/ui'
 import { ReviewBanner, ReviewChip, ReviewsWaiting } from '../components/ReviewPanel'
 import { FILTERS, matchesFilter, type Analysis } from '../domain/analyze'
 import { isLate } from '../domain/deadline'
+import { setupSteps, stepsLeft } from '../domain/setupSteps'
 import { peso, plural } from '../domain/format'
 import type { Barangay, Filter, Issue, Tone } from '../domain/types'
 import { fetchManagedProfiles } from '../lib/supabase'
@@ -71,6 +72,19 @@ function Welcome({ A }: { A: Analysis }) {
       <a className="btn primary big" href={href(action.to)}>
         {action.label} {Icon.next}
       </a>
+    </div>
+  )
+}
+
+/** A reminder while Setup still has a step missing something, such as one skipped for now. */
+function SetupReminder() {
+  const sub = useStore((s) => s.sub)
+  const left = stepsLeft(setupSteps(sub, null))
+  if (!left.length) return null
+  return (
+    <div className="banner warn">
+      <span>Setup isn't finished: {left.map((s) => s.title.toLowerCase()).join(', ')} still {left.length === 1 ? 'needs' : 'need'} information. The forms print it on every page.</span>
+      <a className="btn sm" href={href({ page: 'setup' })}>Finish setup</a>
     </div>
   )
 }
@@ -492,6 +506,7 @@ export function DashboardPage({ A, view }: { A: Analysis; view?: 'province' }) {
       <Welcome A={A} />
       {role === 'rep' && <WaitingApprovals />}
       {role === 'rep' && <ReviewsWaiting />}
+      {role === 'rep' && <SetupReminder />}
       <KpiRow A={A} />
       <div className="dash-grid">
         <ProgressGauge A={A} />
