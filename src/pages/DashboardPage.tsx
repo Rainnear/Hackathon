@@ -124,34 +124,15 @@ function KpiRow({ A }: { A: Analysis }) {
   )
 }
 
-/** Half-circle meter in one colour: how much of the municipality is ready. */
-function ProgressGauge({ A }: { A: Analysis }) {
-  const total = useStore((s) => s.sub.brgys.length)
-  const pct = total ? Math.round((A.ready / total) * 100) : 0
-  const arc = 'M 20 100 A 80 80 0 0 1 180 100'
-  return (
-    <LinkCard title="Overall progress" to={{ page: 'barangays', brgy: null }} collapsible="dash-progress">
-      <div className="box-bd gauge-wrap">
-        <div className="gauge" role="img" aria-label={`${pct} percent of barangays are ready`}>
-          <svg viewBox="0 0 200 112">
-            <path d={arc} className="g-track" pathLength={100} />
-            {pct > 0 && <path d={arc} className={`g-fill ${pct === 100 ? 'ok' : ''}`} pathLength={100} strokeDasharray={`${pct} 100`} />}
-          </svg>
-          <div className="gauge-v">{pct}%</div>
-        </div>
-        <p className="gauge-cap">
-          <b>{A.ready} of {total}</b> barangays are complete and ready to print
-        </p>
-      </div>
-    </LinkCard>
-  )
-}
-
-/** Ready / check / problems / not started, as a donut with a clickable legend that doubles as the table. */
-function StatusDonut({ A }: { A: Analysis }) {
+/**
+ * How far along the municipality is, in one card: a donut of barangays by status with the share that is
+ * ready in the middle, and a legend that opens each group.
+ */
+function ProgressCard({ A }: { A: Analysis }) {
   const brgys = useStore((s) => s.sub.brgys)
   const openGroup = useOpenGroup(A)
   const total = brgys.length
+  const pct = total ? Math.round((A.ready / total) * 100) : 0
   const rows = TONES.map((t) => ({ ...t, n: brgys.filter((b) => A.status[b.name].tone === t.tone).length }))
   const nonzero = rows.filter((r) => r.n > 0)
   const gap = nonzero.length > 1 ? 1.2 : 0
@@ -161,10 +142,17 @@ function StatusDonut({ A }: { A: Analysis }) {
     start: nonzero.slice(0, i).reduce((a, x) => a + (x.n / total) * 100, 0),
   }))
   return (
-    <Box title="Barangays by status" className="dash-card" collapsible="dash-status" alert={rows.some((r) => r.tone === 'bad' && r.n) ? 'bad' : null}>
-      <div className="box-bd donut-wrap">
+    <Box
+      title="Progress"
+      aside={<a className="linkbtn" href={href({ page: 'barangays', brgy: null })}>Open</a>}
+      className="dash-card"
+      collapsible="dash-progress"
+      alert={rows.some((r) => r.tone === 'bad' && r.n) ? 'bad' : null}
+    >
+      <div className="box-bd prog">
         <div className="donut">
-          <svg viewBox="0 0 160 160" role="img" aria-label={rows.map((r) => `${r.label}: ${r.n}`).join(', ')}>
+          <svg viewBox="0 0 160 160" role="img" aria-label={`${pct} percent ready. ${rows.map((r) => `${r.label}: ${r.n}`).join(', ')}`}>
+            <circle className="d-track" cx="80" cy="80" r="60" />
             <g transform="rotate(-90 80 80)">
               {parts.map((r) => (
                 <circle key={r.tone} className={`d-seg ${r.tone}`} cx="80" cy="80" r="60" pathLength={100}
@@ -175,21 +163,26 @@ function StatusDonut({ A }: { A: Analysis }) {
             </g>
           </svg>
           <div className="donut-c">
-            <b>{total}</b>
-            <span>barangays</span>
+            <b>{pct}%</b>
+            <span>ready</span>
           </div>
         </div>
-        <ul className="legend">
-          {rows.map((r) => (
-            <li key={r.tone}>
-              <button type="button" onClick={() => openGroup(r.filter)} disabled={!r.n}>
-                <i className={`sw ${r.tone}`} />
-                <span className="grow">{r.label}</span>
-                <b>{r.n}</b>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="prog-side">
+          <p className="prog-cap">
+            <b>{A.ready} of {total}</b> barangays are complete and ready to print
+          </p>
+          <ul className="legend">
+            {rows.map((r) => (
+              <li key={r.tone}>
+                <button type="button" onClick={() => openGroup(r.filter)} disabled={!r.n}>
+                  <i className={`sw ${r.tone}`} />
+                  <span className="grow">{r.label}</span>
+                  <b>{r.n}</b>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </Box>
   )
@@ -511,8 +504,7 @@ export function DashboardPage({ A, view }: { A: Analysis; view?: 'province' }) {
       {role === 'rep' && <SetupReminder />}
       <KpiRow A={A} />
       <div className="dash-grid">
-        <ProgressGauge A={A} />
-        <StatusDonut A={A} />
+        <ProgressCard A={A} />
         <Attention A={A} />
         <DocsCard A={A} />
         <BarangayBoard A={A} />

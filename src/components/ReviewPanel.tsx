@@ -239,9 +239,20 @@ function FixedDialog({ b, bid, errs, onClose }: { b: Barangay; bid: number; errs
 }
 
 /** The secretary's dashboard: the Liga Rep's latest word on their list, right at the top. */
+// The "accepted" notice can be closed; a later return or acceptance is a new review and shows again.
+const closedKey = (id: number) => `sakto.review-closed.${id}`
+function isClosed(id: number) {
+  try {
+    return localStorage.getItem(closedKey(id)) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function ReviewBanner({ b }: { b: Barangay }) {
   const bid = useBarangayId(b)
   const latest = useReviews((s) => latestOf(s.list, bid))
+  const [closed, setClosed] = useState<number | null>(null)
   if (!latest) return null
   const list = href({ page: 'barangays', brgy: b.name })
   if (latest.action === 'returned')
@@ -256,7 +267,21 @@ export function ReviewBanner({ b }: { b: Barangay }) {
     )
   if (latest.action === 'resubmitted')
     return <div className="banner rv-banner">Sent back to the Liga Rep for review on {when(latest)}. Waiting for their answer.</div>
-  return <div className="banner ok rv-banner">The Liga Rep accepted your list on {when(latest)}{by(latest)}. Print and submit as usual.</div>
+  if (closed === latest.id || isClosed(latest.id)) return null
+  const close = () => {
+    setClosed(latest.id)
+    try {
+      localStorage.setItem(closedKey(latest.id), '1')
+    } catch {
+      // Blocked storage: it stays closed until the page is reloaded.
+    }
+  }
+  return (
+    <div className="banner ok rv-banner">
+      <span className="grow">The Liga Rep accepted your list on {when(latest)}{by(latest)}. Print and submit as usual.</span>
+      <button type="button" className="iconbtn banner-x" onClick={close} aria-label="Close this message" title="Close">×</button>
+    </div>
+  )
 }
 
 /** The Liga Rep's dashboard: barangays that answered a return and wait for a second look. */
