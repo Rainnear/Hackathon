@@ -4,10 +4,12 @@
 //   2. Only if step 1 is not sure (always, for handwriting): the "read-scan" Edge Function asks an AI model.
 //      The AI key lives in Supabase, never in the app. If the function isn't deployed, step 1's result
 //      (possibly partial) is used and the secretary types the rest in the review pop-up.
+import { get as idbGet, set as idbSet } from 'idb-keyval'
 import type Tesseract from 'tesseract.js'
 
 import type { Suffix } from '../domain/types'
 import { parseIdText, parseListLines, parsedIsSure, type ListRow, type OcrLine, type ParsedId } from './idParse'
+import { meteredFetch } from './dataMeter'
 import { supabase } from './supabase'
 
 export type IdField = 'last' | 'first' | 'mi' | 'suffix' | 'birthdate'
@@ -45,12 +47,28 @@ function toFields(p: ParsedId, reader: string): IdFields {
   }
 }
 
+// The English model Tesseract would download for itself inside its worker, where the data meter can't see it.
+// Sakto downloads it here instead, counted, into the spot Tesseract checks first (it unzips it on load).
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz'
+const MODEL_KEY = './eng.traineddata'
+async function ensureModel() {
+  try {
+    if ((await idbGet(MODEL_KEY)) !== undefined) return
+    const res = await meteredFetch(MODEL_URL, undefined, 'model')
+    if (res.ok) await idbSet(MODEL_KEY, new Uint8Array(await res.arrayBuffer()))
+  } catch {
+    // Offline or storage blocked: Tesseract tries the download itself.
+  }
+}
+
 // One reader for the whole session, started on first use and stopped after a quiet spell.
 let worker: Promise<Tesseract.Worker> | null = null
 let idle: ReturnType<typeof setTimeout> | undefined
 async function getWorker() {
   clearTimeout(idle)
-  worker ??= import('tesseract.js').then(({ createWorker }) => createWorker('eng'))
+  worker ??= ensureModel()
+    .then(() => import('tesseract.js'))
+    .then(({ createWorker }) => createWorker('eng'))
   idle = setTimeout(() => {
     void worker?.then((w) => w.terminate())
     worker = null

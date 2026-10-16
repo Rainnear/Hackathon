@@ -1159,3 +1159,10 @@ ol.track-list { list-style: none; margin: 0; padding: 0; display: flex; flex-dir
   .setup-ft .btn.primary { flex: 1 }
 }
 @media (prefers-reduced-motion: reduce) { .setup-bd { animation: none } }
+
+/* ---------- Data used this session ---------- */
+.dm-line { display: flex; flex-wrap: wrap; gap: var(--s1) 0; margin: 0 0 var(--s2); font-size: var(--t-md) }
+.dm-line > span { white-space: nowrap }
+.dm-line > span + span::before { content: "·"; margin: 0 var(--s2); color: var(--muted) }
+.dm-line small { color: var(--muted); font-size: var(--t-xs) }
+.box.shut.data-meter .box-hd .btn { display: none }

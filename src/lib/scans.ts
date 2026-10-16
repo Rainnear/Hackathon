@@ -3,6 +3,7 @@ import { newId } from '../domain/format'
 import { extensionFor, shrinkPhoto } from './images'
 import type { ListRow } from './idParse'
 import { blankFields, readId, readList, type IdFields, type ListFields } from './reader'
+import { meteredFetch } from './dataMeter'
 import { supabase } from './supabase'
 
 export type ScanKind = 'id' | 'list' | 'certification' | 'designation' | 'spa'
@@ -113,7 +114,7 @@ export async function readCertificationPhoto(scan: Scan, photo?: Blob): Promise<
     let blob = photo
     if (!blob) {
       if (!scan.front_path) return null
-      const res = await fetch(await photoUrl(scan.front_path))
+      const res = await meteredFetch(await photoUrl(scan.front_path), undefined, 'photosDown')
       if (!res.ok) return null
       blob = await res.blob()
     }
@@ -174,6 +175,33 @@ export async function photoUrl(path: string): Promise<string> {
   fail(error)
   urls.set(path, { url: data!.signedUrl, until: Date.now() + 50 * 60_000 })
   return data!.signedUrl
+}
+
+// Photos shown on screen are downloaded once per session and counted by the data meter. The most recent
+// ones stay in memory, so moving back and forth between scans doesn't download them again.
+const KEEP = 40
+const blobs = new Map<string, Promise<string>>()
+export function photoBlobUrl(path: string): Promise<string> {
+  const hit = blobs.get(path)
+  if (hit) {
+    blobs.delete(path)
+    blobs.set(path, hit)
+    return hit
+  }
+  const p = photoUrl(path)
+    .then((u) => meteredFetch(u, undefined, 'photosDown'))
+    .then(async (res) => {
+      if (!res.ok) throw new Error(`Photo could not load (${res.status}).`)
+      return URL.createObjectURL(await res.blob())
+    })
+  p.catch(() => blobs.delete(path))
+  blobs.set(path, p)
+  for (const [k, old] of blobs) {
+    if (blobs.size <= KEEP) break
+    blobs.delete(k)
+    void old.then((u) => URL.revokeObjectURL(u), () => {})
+  }
+  return p
 }
 
 /** Live updates, so scans sent from the phone app show up (and open the review pop-up) as they arrive. */

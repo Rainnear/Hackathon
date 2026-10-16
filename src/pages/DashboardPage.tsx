@@ -17,6 +17,7 @@ import { ProvinceView } from './ProvinceView'
 import { issueTarget } from '../state/goTo'
 import { HowItWorks } from '../components/Illustrations'
 import { ScansWaiting } from '../components/ScanReview'
+import { DataMeterCard } from '../components/DataMeter'
 import { useEditable } from '../state/access'
 import { toast } from '../state/toast'
 
@@ -439,6 +440,7 @@ function SecretaryHome({ A }: { A: Analysis }) {
         <Checklist b={b} A={A} />
         {toCheck > 0 && <Attention A={A} />}
       </div>
+      <DataMeterCard />
     </section>
   )
 }
@@ -515,6 +517,7 @@ export function DashboardPage({ A, view }: { A: Analysis; view?: 'province' }) {
         <DocsCard A={A} />
         <BarangayBoard A={A} />
       </div>
+      {role === 'rep' && <DataMeterCard />}
     </section>
   )
 }

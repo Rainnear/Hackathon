@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
+import { MeteredWebSocket, meteredFetch } from './dataMeter'
+
 const url = import.meta.env.VITE_SUPABASE_URL?.trim()
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
 
@@ -7,8 +9,11 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
 export const supabaseConfigured = Boolean(url && key)
 
 // The session is kept in localStorage, so a signed-in user stays signed in offline.
+// Every request and live update goes through the data meter, so people on prepaid data can see the cost.
 export const supabase = createClient(url || 'http://localhost', key || 'missing-key', {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  global: { fetch: (input, init) => meteredFetch(input, init) },
+  realtime: { transport: MeteredWebSocket },
 })
 
 export type Role = 'pending' | 'secretary' | 'rep' | 'admin'

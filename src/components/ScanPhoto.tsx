@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { photoUrl } from '../lib/scans'
+import { photoBlobUrl } from '../lib/scans'
 
 /** One ID photo from private storage. Tap to open it full size. */
 export function ScanPhoto({ path, label }: { path: string | null; label: string }) {
@@ -9,7 +9,7 @@ export function ScanPhoto({ path, label }: { path: string | null; label: string 
   useEffect(() => {
     if (!path) return
     let alive = true
-    photoUrl(path).then(
+    photoBlobUrl(path).then(
       (u) => alive && setUrl(u),
       () => alive && setFailed(true),
     )
